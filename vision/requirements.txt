@@ -1,0 +1,3 @@
+# Checkpoint 2 will pin torch, torchvision, opencv-python, and SAM 2.
+# Do not install this file expecting GPU tracking to work yet.
+numpy>=1.26

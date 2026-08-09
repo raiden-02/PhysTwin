@@ -2,7 +2,7 @@
 
 PhysTwin reconstructs a simple 2D physics motion from a short fixed-camera video of one moving object.
 
-This document is the Day-1 design. It matches `career-os/portfolio/phystwin.md`. Implementation follows the checkpoint order in that contract. Checkpoint 0 ships structure, types, and the JSON boundary. Simulation, fitting, GPU tracking, and demo work come later.
+This document is the Day-1 design. It matches `career-os/portfolio/phystwin.md`. Implementation follows the checkpoint order in that contract. Checkpoint 1 ships the deterministic simulator, synthetic generator, metrics, and parameter fitter. GPU tracking, real-trajectory fitting through the CLI, and demo work come later.
 
 ## Pipeline
 
@@ -115,7 +115,7 @@ Time `t` is seconds from the start of the clip. The usual value is `frame / fps`
 }
 ```
 
-`phystwin fit` does not write this file yet. Checkpoint 0 only loads and inspects `tracking.json`.
+The reconstruction writer exists. `phystwin fit` remains disabled until Checkpoint 3 adds real-trajectory ground handling and validation.
 
 ## Coordinates, units, scale
 
@@ -132,7 +132,7 @@ Do not claim SI units unless a later checkpoint adds a known scene length (ball 
 
 Normalized `[0, 1]` coordinates are not the default. Pixel RMSE is the number a reviewer can check against a plot. If we normalize later, we store the scale used.
 
-## Physics model (Checkpoint 1)
+## Physics model
 
 One rigid point mass in 2D image space. No rotation, drag, friction, or object-object collision in V1.
 
@@ -164,7 +164,7 @@ Collision is a hard clamp against one horizontal ground line. Contact timing is 
 
 Why this integrator: it is deterministic, matches frame-rate sampling, and is easy to explain. It is not energy-conserving. Bounce timing error of about one frame is expected.
 
-## System identification (Checkpoint 1)
+## System identification
 
 Observed points `P_obs(t_i)`. Simulator points `P_sim(t_i; θ)` sampled at the same times.
 
@@ -172,9 +172,13 @@ Observed points `P_obs(t_i)`. Simulator points `P_sim(t_i; θ)` sampled at the s
 θ* = arg min_θ  Σ_i ||P_obs(t_i) - P_sim(t_i; θ)||²
 ```
 
-Unweighted residuals first. Confidence weights and outlier rejection only if real tracking noise requires them after the unweighted fit works.
+The Checkpoint 1 fitter minimizes unweighted residuals. `vx0` is separable from the collision dynamics, so it is solved exactly by scalar linear least squares. The remaining `(vy0, g, e)` values minimize the vertical squared residuals.
 
-Restitution makes the objective non-smooth near bounce times. Planned fallback order if Ceres / least squares is unstable:
+Restitution and the hard ground clamp make the objective non-smooth near bounce times. The current fitter uses a fixed-seed bounded differential search followed by deterministic coordinate refinement. It adds no numerical dependency and produces repeatable results. This is still an unweighted least-squares fit: the search minimizes the mean squared position residual.
+
+Bounds come from the observed vertical speed and duration. `g` is constrained to be non-negative. `e` is constrained to `[0, 1]`. The initial vertical velocity and gravity estimates use pre-contact finite differences when frame-aligned samples are available.
+
+Fallback order if real tracking is unstable:
 
 1. detect bounce times from the observed `y` series and fit flight segments
 2. robust loss
@@ -189,15 +193,15 @@ The choice must be justified from observed behavior, not from solver fashion.
 |---|---|---|---|
 | C++20 compile | MSVC (VS 18 Community) | 0 | already present |
 | `tracking.json` I/O | nlohmann/json 3.11.3 | 0 | CMake FetchContent |
-| Physics + synthetic tests | this repo | 1 | no extra dep |
-| Nonlinear least squares | Ceres Solver preferred | 1 | vcpkg or source. Fallback: small in-repo optimizer (Nelder-Mead or finite-difference Gauss-Newton) if Ceres blocks the day |
-| Dense linear algebra | Eigen | 1 only if used | FetchContent. Skip if unused |
+| Physics + synthetic tests | this repo | 1 | implemented, no extra dep |
+| Nonlinear least squares | deterministic bounded search | 1 | implemented in-repo because the collision residual is non-smooth |
+| Dense linear algebra | Eigen | later only if needed | skipped in Checkpoint 1 |
 | Video / masks | OpenCV via `opencv-python` | 2 | Python venv |
 | SAM 2 inference | PyTorch + SAM 2 + CUDA | 2 | Python 3.11 or 3.12 venv on the RTX 4080. System Python is currently 3.14 beta and is not trusted for PyTorch |
 | Plots | matplotlib or a tiny C++ dump + Python plot | 4 | after RMSE exists |
 | Interactive UI | React + TypeScript + Three.js | 4 optional | only if the CLI loop is already measured |
 
-Do not add Ceres, Eigen, OpenCV, or PyTorch to the C++ CMake graph in Checkpoint 0. A missing optional package must not break `cmake --build`.
+Ceres, Eigen, OpenCV, and PyTorch are not in the C++ CMake graph. A missing optional package must not break `cmake --build`.
 
 ## CLI
 
@@ -207,24 +211,23 @@ phystwin fit tracking.json --output reconstruction.json
 python vision/track.py input.mp4 --point 531,312 --output tracking.json
 ```
 
-Checkpoint 0:
+Checkpoint 1:
 
 - `inspect` loads the contract and prints a summary
-- `fit` is a stub (non-zero exit)
+- `fit` remains a stub until Checkpoint 3 connects and validates real observations
 - `track.py` is a stub (non-zero exit)
 
 ## Tests
 
-| Target | Role now | Role later |
-|---|---|---|
-| `io_roundtrip` | write/load `tracking.json`, assert fields | keep as contract test |
-| `synthetic_fit` | placeholder that currently passes without recovery | Checkpoint 1: recover known `vx0, vy0, g, e` within a stated tolerance |
+| Target | Coverage |
+|---|---|
+| `io_roundtrip` | write/load `tracking.json`, assert fields and identical-trajectory RMSE |
+| `synthetic_fit` | generate 241 frames with two ground contacts, recover known `vx0, vy0, g, e`, enforce explicit tolerances, and reject a perturbed negative control |
 
-## What is intentionally not in Checkpoint 0
+## What is intentionally not in Checkpoint 1
 
-- numerical integration
-- parameter recovery
 - SAM 2 / GPU tracking
-- reconstruction JSON writer used by a real fit
+- real-video ground estimation and CLI fitting
+- robust loss, confidence weights, smoothing, or outlier rejection
 - plots, GIFs, frontend
-- Ceres / Eigen / OpenCV C++ packages
+- Ceres, Eigen, or OpenCV C++ packages

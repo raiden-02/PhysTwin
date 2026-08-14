@@ -1,3 +1,8 @@
-# Checkpoint 2 will pin torch, torchvision, opencv-python, and SAM 2.
-# Do not install this file expecting GPU tracking to work yet.
+# Checkpoint 2. Install with scripts/setup-vision.ps1, not this file alone.
+# PyTorch wheels must come from the CUDA index, then SAM 2 from GitHub.
 numpy>=1.26
+opencv-python>=4.10
+matplotlib>=3.8
+tqdm>=4.66
+pillow>=10.0
+huggingface_hub>=0.24

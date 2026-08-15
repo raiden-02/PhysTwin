@@ -1,0 +1,449 @@
+{
+  "date": "2026-08-25",
+  "notes": "Numbers copied from measured reconstruction.json files and synthetic_fit stdout. Re-run scripts/run-eval.ps1 to refresh.",
+  "cases": [
+    {
+      "id": "synthetic_noise_free",
+      "title": "C++ synthetic recovery",
+      "kind": "cpp_synthetic",
+      "notes": "Noise-free 241-frame two-bounce case from phystwin_synthetic_fit_test. Not video evidence.",
+      "parameters": {
+        "vx0": {
+          "actual": 180.0,
+          "recovered": 180.0,
+          "abs_error": 2.84217e-14
+        },
+        "vy0": {
+          "actual": -420.0,
+          "recovered": -420.0,
+          "abs_error": 1.54178e-07
+        },
+        "g": {
+          "actual": 980.0,
+          "recovered": 980.0,
+          "abs_error": 2.50759e-06
+        },
+        "e": {
+          "actual": 0.72,
+          "recovered": 0.72,
+          "abs_error": 7.91809e-10
+        }
+      },
+      "rmse_px": 9.01143e-07,
+      "mae_px": 5.99064e-07,
+      "perturbed_rmse_px": 65.7512,
+      "search_generations": 160,
+      "refinement_iterations": 23,
+      "iterations": null,
+      "fit_seconds": 0.0155976,
+      "stdout": "synthetic parameter recovery\r\nparameter     actual       recovered      abs_error\r\nvx0           180          180          2.84217e-14\r\nvy0           -420         -420         1.54178e-07\r\ng             980          980          2.50759e-06\r\ne             0.72         0.72         7.91809e-10\r\nRMSE: 9.01143e-07 px\r\nMAE: 5.99064e-07 px\r\nperturbed RMSE: 65.7512 px\r\nsearch_generations: 160\r\nrefinement_iterations: 23\r\nfit time: 0.0155976 s"
+    },
+    {
+      "id": "mixkit_tennis",
+      "title": "Mixkit tennis bounce",
+      "kind": "recorded_video",
+      "video": "samples/bounce.mp4",
+      "point": "375,722",
+      "source": "https://mixkit.co/free-stock-video/tennis-ball-bouncing-in-slow-motion-101289/",
+      "notes": "Slow-motion close-up recorded clip. Primary external-validity case.",
+      "fps": 24.0,
+      "frame_width": 720,
+      "frame_height": 1280,
+      "n_observations": 281,
+      "parameters": {
+        "e": 0.6654815066777158,
+        "g": 173.1487720739143,
+        "vx0": -9.509331667339449,
+        "vy0": 706.5406915873825
+      },
+      "metrics": {
+        "fit_seconds": 0.0189816,
+        "ground_source": "max_observed_centroid_y",
+        "ground_violation": 0.0,
+        "iterations": 183,
+        "mae": 11.096629557667834,
+        "n": 281,
+        "normalized_rmse": 0.019824809660215395,
+        "quality": "fair",
+        "refinement_iterations": 23,
+        "rmse": 13.790769169691435,
+        "rmse_x": 8.396250615818007,
+        "rmse_y": 10.940214343790878,
+        "search_generations": 160,
+        "worst_axis_normalized_rmse": 0.09299522366805492
+      },
+      "contact_timing": {
+        "observed_contact_frames": [
+          5,
+          142,
+          228
+        ],
+        "simulated_contact_frames": [
+          5,
+          141,
+          230
+        ],
+        "paired": 3,
+        "unpaired_observed": 0,
+        "unpaired_simulated": 0,
+        "pairs": [
+          [
+            5,
+            5
+          ],
+          [
+            142,
+            141
+          ],
+          [
+            228,
+            230
+          ]
+        ],
+        "mean_error_frames": 1.0,
+        "mean_error_ms": 41.666666666666664
+      },
+      "artifacts": {
+        "tracking": "results/cases/mixkit_tennis/tracking.json",
+        "reconstruction": "results/cases/mixkit_tennis/reconstruction.json",
+        "plot": "results/cases/mixkit_tennis/reconstruction_preview.png",
+        "overlay": "results/cases/mixkit_tennis/overlay.mp4",
+        "gif": "docs/demo/mixkit_overlay.gif",
+        "still": "docs/demo/mixkit_overlay.png"
+      },
+      "tracking_runtime": {
+        "device": "NVIDIA GeForce RTX 4080 SUPER",
+        "n_frames": 281,
+        "skipped_empty_masks": 0,
+        "end_to_end_seconds": 19.957740200014086,
+        "end_to_end_fps": 14.079750371728041,
+        "timing_includes": "model_load,init_state,jpeg_decode,propagate",
+        "point": [
+          375.0,
+          722.0
+        ]
+      }
+    },
+    {
+      "id": "mixkit_bad_ground",
+      "title": "Mixkit explicit bad ground",
+      "kind": "recorded_video_failure",
+      "video": "samples/bounce.mp4",
+      "point": "375,722",
+      "source": null,
+      "notes": "Same Mixkit tracking with --ground-y 800. Expected quality poor and CLI exit 2.",
+      "fps": 24.0,
+      "frame_width": 720,
+      "frame_height": 1280,
+      "n_observations": 281,
+      "parameters": {
+        "e": 0.570426823739109,
+        "g": 125.69596188865603,
+        "vx0": -9.509331667339449,
+        "vy0": 646.6439241065198
+      },
+      "metrics": {
+        "fit_seconds": 0.0561705,
+        "ground_source": "explicit",
+        "ground_violation": 108.99288662145625,
+        "iterations": 185,
+        "mae": 41.47169630811411,
+        "n": 281,
+        "normalized_rmse": 0.07866636560725628,
+        "quality": "poor",
+        "refinement_iterations": 25,
+        "rmse": 54.72283003479981,
+        "rmse_x": 8.396250615818007,
+        "rmse_y": 54.07486571979596,
+        "search_generations": 160,
+        "worst_axis_normalized_rmse": 0.09299522366805492
+      },
+      "contact_timing": {
+        "observed_contact_frames": [
+          5,
+          142,
+          228
+        ],
+        "simulated_contact_frames": [
+          143,
+          224,
+          270
+        ],
+        "paired": 2,
+        "unpaired_observed": 1,
+        "unpaired_simulated": 1,
+        "pairs": [
+          [
+            142,
+            143
+          ],
+          [
+            228,
+            224
+          ]
+        ],
+        "mean_error_frames": 2.5,
+        "mean_error_ms": 104.16666666666667
+      },
+      "artifacts": {
+        "tracking": "results/cases/mixkit_bad_ground/tracking.json",
+        "reconstruction": "results/cases/mixkit_bad_ground/reconstruction.json",
+        "plot": null,
+        "overlay": null,
+        "gif": null,
+        "still": null
+      },
+      "tracking_runtime": {
+        "device": "NVIDIA GeForce RTX 4080 SUPER",
+        "n_frames": 281,
+        "skipped_empty_masks": 0,
+        "end_to_end_seconds": 19.957740200014086,
+        "end_to_end_fps": 14.079750371728041,
+        "timing_includes": "model_load,init_state,jpeg_decode,propagate",
+        "point": [
+          375.0,
+          722.0
+        ]
+      }
+    },
+    {
+      "id": "generated_diagonal",
+      "title": "Generated diagonal bounce",
+      "kind": "generated_video",
+      "video": "samples/generated_diagonal.mp4",
+      "point": "80,40",
+      "source": null,
+      "notes": "Rendered diagonal bounce (vx=140, vy=20, g=1800, e=0.72). Same integrator family as the fitter. Pipeline check, not real-footage accuracy.",
+      "fps": 60.0,
+      "frame_width": 640,
+      "frame_height": 360,
+      "n_observations": 180,
+      "parameters": {
+        "e": 0.7193214935426008,
+        "g": 1795.648193109894,
+        "vx0": 139.99912614073645,
+        "vy0": 20.77061756813787
+      },
+      "metrics": {
+        "fit_seconds": 0.0127349,
+        "ground_source": "max_observed_centroid_y",
+        "ground_violation": 0.0,
+        "iterations": 183,
+        "mae": 0.3894510078343378,
+        "n": 180,
+        "normalized_rmse": 0.0010095699789864074,
+        "quality": "good",
+        "refinement_iterations": 23,
+        "rmse": 0.42206493424349817,
+        "rmse_x": 0.2887938888071066,
+        "rmse_y": 0.3077935972460067,
+        "search_generations": 160,
+        "worst_axis_normalized_rmse": 0.0011754652460899582
+      },
+      "contact_timing": {
+        "observed_contact_frames": [
+          32,
+          78,
+          112,
+          135,
+          151,
+          162,
+          176
+        ],
+        "simulated_contact_frames": [
+          32,
+          79,
+          112,
+          135,
+          151,
+          162,
+          173
+        ],
+        "paired": 7,
+        "unpaired_observed": 0,
+        "unpaired_simulated": 0,
+        "pairs": [
+          [
+            32,
+            32
+          ],
+          [
+            78,
+            79
+          ],
+          [
+            112,
+            112
+          ],
+          [
+            135,
+            135
+          ],
+          [
+            151,
+            151
+          ],
+          [
+            162,
+            162
+          ],
+          [
+            176,
+            173
+          ]
+        ],
+        "mean_error_frames": 0.5714285714285714,
+        "mean_error_ms": 9.523809523809524
+      },
+      "artifacts": {
+        "tracking": "results/cases/generated_diagonal/tracking.json",
+        "reconstruction": "results/cases/generated_diagonal/reconstruction.json",
+        "plot": "results/cases/generated_diagonal/reconstruction_preview.png",
+        "overlay": "results/cases/generated_diagonal/overlay.mp4",
+        "gif": "docs/demo/diagonal_overlay.gif",
+        "still": "docs/demo/diagonal_overlay.png"
+      },
+      "tracking_runtime": {
+        "device": "NVIDIA GeForce RTX 4080 SUPER",
+        "n_frames": 180,
+        "skipped_empty_masks": 0,
+        "end_to_end_seconds": 12.04573650000384,
+        "end_to_end_fps": 14.943046446345775,
+        "timing_includes": "model_load,init_state,jpeg_decode,propagate",
+        "point": [
+          80.0,
+          40.0
+        ]
+      }
+    },
+    {
+      "id": "generated_drop",
+      "title": "Generated near-vertical drop",
+      "kind": "generated_video",
+      "video": "samples/generated_drop.mp4",
+      "point": "320,36",
+      "source": null,
+      "notes": "Rendered near-vertical drop (vx=4, vy=50, g=1600, e=0.40). Same integrator family as the fitter. Pipeline check, not real-footage accuracy.",
+      "fps": 60.0,
+      "frame_width": 640,
+      "frame_height": 360,
+      "n_observations": 180,
+      "parameters": {
+        "e": 0.40016076631986824,
+        "g": 1600.0611497083444,
+        "vx0": 4.076950301371468,
+        "vy0": 49.74176644012113
+      },
+      "metrics": {
+        "fit_seconds": 0.0123388,
+        "ground_source": "max_observed_centroid_y",
+        "ground_violation": 0.0,
+        "iterations": 183,
+        "mae": 0.31056303967426274,
+        "n": 180,
+        "normalized_rmse": 0.0012979836384288132,
+        "quality": "good",
+        "refinement_iterations": 23,
+        "rmse": 0.3452025110696107,
+        "rmse_x": 0.28832290437371694,
+        "rmse_y": 0.18982801811710814,
+        "search_generations": 160,
+        "worst_axis_normalized_rmse": 0.0007137655542189523
+      },
+      "contact_timing": {
+        "observed_contact_frames": [
+          33,
+          60,
+          72,
+          83,
+          103,
+          120,
+          143,
+          153,
+          168
+        ],
+        "simulated_contact_frames": [
+          33,
+          60,
+          70,
+          78,
+          86,
+          94,
+          102,
+          110,
+          118,
+          126,
+          134,
+          142,
+          150,
+          158,
+          166,
+          174
+        ],
+        "paired": 9,
+        "unpaired_observed": 0,
+        "unpaired_simulated": 7,
+        "pairs": [
+          [
+            33,
+            33
+          ],
+          [
+            60,
+            60
+          ],
+          [
+            72,
+            70
+          ],
+          [
+            83,
+            86
+          ],
+          [
+            103,
+            102
+          ],
+          [
+            120,
+            118
+          ],
+          [
+            143,
+            142
+          ],
+          [
+            153,
+            150
+          ],
+          [
+            168,
+            166
+          ]
+        ],
+        "mean_error_frames": 1.5555555555555556,
+        "mean_error_ms": 25.925925925925927
+      },
+      "artifacts": {
+        "tracking": "results/cases/generated_drop/tracking.json",
+        "reconstruction": "results/cases/generated_drop/reconstruction.json",
+        "plot": "results/cases/generated_drop/reconstruction_preview.png",
+        "overlay": "results/cases/generated_drop/overlay.mp4",
+        "gif": "docs/demo/drop_overlay.gif",
+        "still": "docs/demo/drop_overlay.png"
+      },
+      "tracking_runtime": {
+        "device": "NVIDIA GeForce RTX 4080 SUPER",
+        "n_frames": 180,
+        "skipped_empty_masks": 0,
+        "end_to_end_seconds": 11.709433999989415,
+        "end_to_end_fps": 15.372220382314186,
+        "timing_includes": "model_load,init_state,jpeg_decode,propagate",
+        "point": [
+          320.0,
+          36.0
+        ]
+      }
+    }
+  ]
+}

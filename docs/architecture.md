@@ -2,7 +2,7 @@
 
 PhysTwin reconstructs a simple 2D physics motion from a short fixed-camera video of one moving object.
 
-This document is the Day-1 design. It matches `career-os/portfolio/phystwin.md`. Implementation follows the checkpoint order in that contract. Checkpoint 3 connects tracked observations to the C++ fitter, writes `reconstruction.json`, and reports measured fit quality. Demo work comes later.
+This document is the Day-1 design. It matches `career-os/portfolio/phystwin.md`. Checkpoint 6 applies the accepted V1 audit: honest recorded vs rendered vs synthetic labels, a saved poor-fit case, and a dropped-frame test. React/Three.js and Ceres are still out of this checkpoint.
 
 ## Pipeline
 
@@ -18,7 +18,8 @@ C++20 core (this repo)
   phystwin fit tracking.json --output reconstruction.json
         |
         v
-plot or UI: observed vs simulated + RMSE
+plot_reconstruction.py and overlay_comparison.py
+  observed vs simulated + RMSE, optional GIF
 ```
 
 No gRPC, queues, or service mesh in V1. The languages talk through JSON files.
@@ -35,9 +36,11 @@ phystwin/
   samples/                tiny JSON fixtures. Large videos stay local
   results/                measured outputs. Not committed
   docs/architecture.md    this file
+  docs/evaluation.json    measured evaluation numbers
+  docs/demo/              committed overlays, GIF, three-case plot
 ```
 
-`frontend/` is not created until the core loop and metrics exist.
+`frontend/` was not created. The overlay GIF and trajectory plot are the V1 demo.
 
 ## Language split
 
@@ -59,7 +62,7 @@ Python owns only the ML worker:
 
 Do not port SAM 2 to C++ in V1.
 
-TypeScript / React / Three.js is optional after the CLI loop is measured. A plotted overlay is enough for acceptance.
+TypeScript / React / Three.js was skipped. Checkpoint 4 ships matplotlib plots plus an OpenCV/Pillow side-by-side overlay.
 
 ## JSON contracts
 
@@ -118,7 +121,9 @@ Time `t` is seconds from the start of the clip. The usual value is `frame / fps`
     "ground_source": "max_observed_centroid_y",
     "ground_violation": 0.0,
     "n": 0,
-    "iterations": 0,
+    "search_generations": 160,
+    "refinement_iterations": 0,
+    "iterations": 160,
     "fit_seconds": 0.0
   },
   "simulated": [
@@ -196,6 +201,8 @@ An explicit ground is `poor` if observed centroids cross it by more than 5 px or
 
 `vision/plot_reconstruction.py` performs a simple contact-timing check by pairing high-y local maxima in observed and simulated trajectories. It is an evaluation heuristic, not part of the optimizer.
 
+The differential-evolution generation count is a **fixed budget of 160**, not an adaptive stopping time. Coordinate refinement then halves a 0.05 step until it is below `1e-8`. On the measured cases that loop accepts no improvement after DE, so the printed `refinement_iterations` value is a safety-net cost, not evidence of extra convergence.
+
 Fallback order if real tracking is unstable:
 
 1. detect bounce times from the observed `y` series and fit flight segments
@@ -216,8 +223,9 @@ The choice must be justified from observed behavior, not from solver fashion.
 | Dense linear algebra | Eigen | later only if needed | skipped in Checkpoint 1 |
 | Video / masks | OpenCV via `opencv-python` | 2 | implemented in the 3.11 venv |
 | SAM 2 inference | PyTorch 2.13.0+cu126 + SAM 2.1 tiny | 2 | implemented on RTX 4080 SUPER. `SAM2_BUILD_CUDA=0` because `nvcc` is missing |
-| Plots | matplotlib or a tiny C++ dump + Python plot | 4 | after RMSE exists |
-| Interactive UI | React + TypeScript + Three.js | 4 optional | only if the CLI loop is already measured |
+| Plots | matplotlib `plot_reconstruction.py` / `plot_evaluation.py` | 4 | implemented |
+| Overlay GIF | OpenCV + Pillow `overlay_comparison.py` | 4 | implemented, no frontend |
+| Interactive UI | React + TypeScript + Three.js | skipped | overlay plot/GIF is the demo |
 
 Ceres, Eigen, OpenCV, and PyTorch are not in the C++ CMake graph. A missing optional package must not break `cmake --build`.
 
@@ -229,16 +237,20 @@ phystwin fit tracking.json --output reconstruction.json
 python vision/track.py input.mp4 --point 531,312 --output tracking.json
 ```
 
-Checkpoint 3:
+Checkpoint 6:
 
 - `inspect` loads the contract and prints a summary
 - `fit` loads observations, fits parameters, writes reconstruction JSON, and prints quality
 - `fit --ground-y PIXELS` overrides the default maximum-centroid ground estimate
 - poor fits write diagnostic output and exit with code 2
 - `vision/track.py` runs SAM 2 on CUDA and writes `tracking.json`
-- `vision/check_cuda.py` prints the selected GPU
+- `vision/track.py` fails if the video has no valid fps metadata. It does not assume 30 fps
+- tracking timing is **end-to-end** (model load, JPEG decode, init, propagation)
 - empty masks are omitted from `observations` and recorded in `tracking_raw.json`
 - `vision/plot_reconstruction.py` plots observed vs simulated trajectories
+- `vision/overlay_comparison.py` writes a side-by-side MP4, still PNG, and optional GIF
+- `vision/plot_evaluation.py` builds the three-case README figure from `results/cases/manifest.json`
+- `scripts/run-eval.ps1` requires `samples/bounce.mp4`, tracks Mixkit into a dedicated path, writes a poor-fit case, and refreshes `docs/evaluation.json`
 
 Create the venv once:
 
@@ -254,12 +266,16 @@ SAM 2.1 tiny weights download to `checkpoints/sam2.1_hiera_tiny.pt` on first run
 |---|---|
 | `io_roundtrip` | write/load `tracking.json`, assert fields and identical-trajectory RMSE |
 | `synthetic_fit` | generate 241 frames with two ground contacts, recover known `vx0, vy0, g, e`, enforce explicit tolerances, and reject a perturbed negative control |
+| `dropped_frame` | drop a contiguous interior gap from a synthetic trajectory, assert the simulator samples the remaining timestamps, and recover the same parameters |
 | `vision/test_trajectory.py` | CPU mask centroid/bbox extraction |
 
-## What is intentionally not in Checkpoint 3
+## What is intentionally not in Checkpoint 6
 
+- React / TypeScript / Three.js
+- Ceres
+- physical-scale calibration
+- additional recorded camera clips
 - robust loss, confidence weights, smoothing, or outlier rejection
-- video overlay, GIFs, frontend
-- Ceres, Eigen, or OpenCV C++ packages
+- Eigen or OpenCV C++ packages
 - SAM 2 CUDA post-process extension (`nvcc` not installed)
-- a phone-camera clip in git. The measured run used a free Mixkit stock clip
+- a phone-camera clip in git. Recorded evidence is the Mixkit stock clip. The other two video cases are rendered, then tracked with SAM 2

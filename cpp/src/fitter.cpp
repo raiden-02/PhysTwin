@@ -111,9 +111,83 @@ void validate_observations(const Trajectory& observed) {
     }
 }
 
+double trajectory_extent(const Trajectory& trajectory) {
+    const auto [min_x, max_x] = std::minmax_element(
+        trajectory.observations.begin(),
+        trajectory.observations.end(),
+        [](const Observation& left, const Observation& right) {
+            return left.x < right.x;
+        });
+    const auto [min_y, max_y] = std::minmax_element(
+        trajectory.observations.begin(),
+        trajectory.observations.end(),
+        [](const Observation& left, const Observation& right) {
+            return left.y < right.y;
+        });
+    return std::max({max_x->x - min_x->x, max_y->y - min_y->y, 1.0});
+}
+
+struct AxisFitMetrics {
+    double rmse_x = 0.0;
+    double rmse_y = 0.0;
+    double worst_normalized_rmse = 0.0;
+};
+
+AxisFitMetrics axis_fit_metrics(const Trajectory& observed,
+                                const Trajectory& simulated) {
+    double sum_x = 0.0;
+    double sum_y = 0.0;
+    double min_x = observed.observations.front().x;
+    double max_x = min_x;
+    double min_y = observed.observations.front().y;
+    double max_y = min_y;
+    for (std::size_t i = 0; i < observed.observations.size(); ++i) {
+        const double dx =
+            observed.observations[i].x - simulated.observations[i].x;
+        const double dy =
+            observed.observations[i].y - simulated.observations[i].y;
+        sum_x += dx * dx;
+        sum_y += dy * dy;
+        min_x = std::min(min_x, observed.observations[i].x);
+        max_x = std::max(max_x, observed.observations[i].x);
+        min_y = std::min(min_y, observed.observations[i].y);
+        max_y = std::max(max_y, observed.observations[i].y);
+    }
+
+    const double count = static_cast<double>(observed.observations.size());
+    const double rmse_x = std::sqrt(sum_x / count);
+    const double rmse_y = std::sqrt(sum_y / count);
+    const double range_x = max_x - min_x;
+    const double range_y = max_y - min_y;
+    const double max_range = std::max({range_x, range_y, 1.0});
+    const double meaningful_range = std::max(10.0, 0.05 * max_range);
+
+    double worst = 0.0;
+    if (range_x >= meaningful_range) {
+        worst = std::max(worst, rmse_x / range_x);
+    }
+    if (range_y >= meaningful_range) {
+        worst = std::max(worst, rmse_y / range_y);
+    }
+    return {.rmse_x = rmse_x,
+            .rmse_y = rmse_y,
+            .worst_normalized_rmse = worst};
+}
+
+std::string classify_fit(double worst_axis_normalized_rmse) {
+    if (worst_axis_normalized_rmse <= 0.05) {
+        return "good";
+    }
+    if (worst_axis_normalized_rmse <= 0.15) {
+        return "fair";
+    }
+    return "poor";
+}
+
 }  // namespace
 
-Reconstruction Fitter::fit(const Trajectory& observed) const {
+Reconstruction Fitter::fit(const Trajectory& observed,
+                           const FitOptions& options) const {
     validate_observations(observed);
     const auto start = std::chrono::steady_clock::now();
 
@@ -128,13 +202,21 @@ Reconstruction Fitter::fit(const Trajectory& observed) const {
     env.x0 = observed.observations.front().x;
     env.y0 = observed.observations.front().y;
     env.dt = 1.0 / observed.fps;
-    env.y_ground = std::max_element(
-                       observed.observations.begin(),
-                       observed.observations.end(),
-                       [](const Observation& left, const Observation& right) {
-                           return left.y < right.y;
-                       })
-                       ->y;
+    if (options.ground_y.has_value()) {
+        if (!std::isfinite(*options.ground_y) || *options.ground_y < env.y0) {
+            throw std::invalid_argument(
+                "explicit ground y must be finite and >= the initial centroid y");
+        }
+        env.y_ground = *options.ground_y;
+    } else {
+        env.y_ground = std::max_element(
+                           observed.observations.begin(),
+                           observed.observations.end(),
+                           [](const Observation& left, const Observation& right) {
+                               return left.y < right.y;
+                           })
+                           ->y;
+    }
 
     const double vx0 = estimate_vx(observed, times);
     const auto [estimated_vy0, estimated_g] =
@@ -161,9 +243,7 @@ Reconstruction Fitter::fit(const Trajectory& observed) const {
     };
 
     const Simulator simulator;
-    int objective_evaluations = 0;
     const auto objective = [&](const Candidate& candidate) {
-        ++objective_evaluations;
         const Trajectory simulated = simulator.run(decode(candidate, vx0, bounds), env, times);
         double sum = 0.0;
         for (std::size_t i = 0; i < observed.observations.size(); ++i) {
@@ -275,11 +355,37 @@ Reconstruction Fitter::fit(const Trajectory& observed) const {
     }
     reconstruction.rmse = rmse(observed, reconstruction.simulated);
     reconstruction.mae = mae(observed, reconstruction.simulated);
+    const AxisFitMetrics axis_metrics =
+        axis_fit_metrics(observed, reconstruction.simulated);
+    reconstruction.rmse_x = axis_metrics.rmse_x;
+    reconstruction.rmse_y = axis_metrics.rmse_y;
+    reconstruction.normalized_rmse =
+        reconstruction.rmse / trajectory_extent(observed);
+    reconstruction.worst_axis_normalized_rmse =
+        axis_metrics.worst_normalized_rmse;
+    reconstruction.quality =
+        classify_fit(reconstruction.worst_axis_normalized_rmse);
+    const double maximum_observed_y = std::max_element(
+                                          observed.observations.begin(),
+                                          observed.observations.end(),
+                                          [](const Observation& left,
+                                             const Observation& right) {
+                                              return left.y < right.y;
+                                          })
+                                          ->y;
+    reconstruction.ground_violation =
+        std::max(0.0, maximum_observed_y - reconstruction.environment.y_ground);
+    const double ground_tolerance =
+        std::max(5.0, 0.02 * trajectory_extent(observed));
+    if (reconstruction.ground_violation > ground_tolerance) {
+        reconstruction.quality = "poor";
+    }
+    reconstruction.ground_source =
+        options.ground_y.has_value() ? "explicit" : "max_observed_centroid_y";
     reconstruction.n = static_cast<int>(observed.observations.size());
     reconstruction.iterations = generations + refinement_iterations;
     reconstruction.fit_seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-    (void)objective_evaluations;
     return reconstruction;
 }
 

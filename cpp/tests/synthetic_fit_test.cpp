@@ -106,6 +106,29 @@ int main() {
             recovered.parameters.e, actual.e, restitution_tolerance, "restitution");
         require(recovered.rmse < rmse_tolerance, "recovered RMSE exceeded 0.1 px");
         require(recovered.mae < rmse_tolerance, "recovered MAE exceeded 0.1 px");
+        require(recovered.quality == "good", "exact synthetic fit must be good");
+        require(recovered.ground_source == "max_observed_centroid_y",
+                "default ground source");
+
+        const phystwin::Reconstruction explicit_ground = phystwin::Fitter{}.fit(
+            observed, {.ground_y = environment.y_ground});
+        require_near(explicit_ground.environment.y_ground,
+                     environment.y_ground,
+                     1e-12,
+                     "explicit ground");
+        require(explicit_ground.ground_source == "explicit",
+                "explicit ground source");
+        require(explicit_ground.rmse < rmse_tolerance,
+                "explicit-ground RMSE exceeded 0.1 px");
+
+        const phystwin::Reconstruction invalid_ground = phystwin::Fitter{}.fit(
+            observed, {.ground_y = environment.y_ground - 120.0});
+        require(invalid_ground.quality == "poor",
+                "ground crossed by observations must be a poor fit");
+        require_near(invalid_ground.ground_violation,
+                     120.0,
+                     1e-9,
+                     "ground violation");
 
         // Negative control: the same simulator with a perturbed fit must be
         // observably wrong. This catches a metric or assertion wired to the

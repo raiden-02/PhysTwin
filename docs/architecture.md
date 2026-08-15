@@ -2,7 +2,7 @@
 
 PhysTwin reconstructs a simple 2D physics motion from a short fixed-camera video of one moving object.
 
-This document is the Day-1 design. It matches `career-os/portfolio/phystwin.md`. Implementation follows the checkpoint order in that contract. Checkpoint 2 ships GPU SAM 2 tracking and `tracking.json`. Real-trajectory C++ fitting through the CLI and demo work come later.
+This document is the Day-1 design. It matches `career-os/portfolio/phystwin.md`. Implementation follows the checkpoint order in that contract. Checkpoint 3 connects tracked observations to the C++ fitter, writes `reconstruction.json`, and reports measured fit quality. Demo work comes later.
 
 ## Pipeline
 
@@ -108,14 +108,26 @@ Time `t` is seconds from the start of the clip. The usual value is `frame / fps`
     "gravity": "pixels_per_second_squared",
     "restitution": "dimensionless"
   },
-  "metrics": { "rmse": 0.0, "mae": 0.0, "n": 0, "iterations": 0, "fit_seconds": 0.0 },
+  "metrics": {
+    "rmse": 0.0,
+    "rmse_x": 0.0,
+    "rmse_y": 0.0,
+    "normalized_rmse": 0.0,
+    "worst_axis_normalized_rmse": 0.0,
+    "quality": "good",
+    "ground_source": "max_observed_centroid_y",
+    "ground_violation": 0.0,
+    "n": 0,
+    "iterations": 0,
+    "fit_seconds": 0.0
+  },
   "simulated": [
     {"frame": 0, "t": 0.0, "x": 0.0, "y": 0.0}
   ]
 }
 ```
 
-The reconstruction writer exists. `phystwin fit` remains disabled until Checkpoint 3 adds real-trajectory ground handling and validation.
+`phystwin fit` writes this file. The simulated array has one point for each input observation.
 
 ## Coordinates, units, scale
 
@@ -146,7 +158,7 @@ Parameters θ:
 Not fitted:
 
 - `x0`, `y0` taken from the first observation
-- `y_ground` estimated from the trajectory (high observed `y`) or passed as `--ground`
+- `y_ground` is the object's center y at contact. It defaults to the maximum observed centroid y or is passed as `--ground-y`
 - `dt` tied to video timing
 
 Integrator: semi-implicit Euler, **fixed timestep** `dt = 1 / fps` from the tracking file.
@@ -177,6 +189,12 @@ The Checkpoint 1 fitter minimizes unweighted residuals. `vx0` is separable from 
 Restitution and the hard ground clamp make the objective non-smooth near bounce times. The current fitter uses a fixed-seed bounded differential search followed by deterministic coordinate refinement. It adds no numerical dependency and produces repeatable results. This is still an unweighted least-squares fit: the search minimizes the mean squared position residual.
 
 Bounds come from the observed vertical speed and duration. `g` is constrained to be non-negative. `e` is constrained to `[0, 1]`. The initial vertical velocity and gravity estimates use pre-contact finite differences when frame-aligned samples are available.
+
+Fit quality is based on per-axis RMSE divided by observed travel on that axis. Axes with less than 10 px or 5% of the largest-axis travel are ignored for this grade so stationary-axis tracking noise does not dominate. `good` is at most 5%, `fair` is at most 15%, and larger error is `poor`. Overall pixel RMSE is always reported separately.
+
+An explicit ground is `poor` if observed centroids cross it by more than 5 px or 2% of trajectory extent. The CLI still writes the reconstruction for diagnosis, prints a warning, and exits with code 2.
+
+`vision/plot_reconstruction.py` performs a simple contact-timing check by pairing high-y local maxima in observed and simulated trajectories. It is an evaluation heuristic, not part of the optimizer.
 
 Fallback order if real tracking is unstable:
 
@@ -211,13 +229,16 @@ phystwin fit tracking.json --output reconstruction.json
 python vision/track.py input.mp4 --point 531,312 --output tracking.json
 ```
 
-Checkpoint 2:
+Checkpoint 3:
 
 - `inspect` loads the contract and prints a summary
-- `fit` remains a stub until Checkpoint 3 connects and validates real observations
+- `fit` loads observations, fits parameters, writes reconstruction JSON, and prints quality
+- `fit --ground-y PIXELS` overrides the default maximum-centroid ground estimate
+- poor fits write diagnostic output and exit with code 2
 - `vision/track.py` runs SAM 2 on CUDA and writes `tracking.json`
 - `vision/check_cuda.py` prints the selected GPU
 - empty masks are omitted from `observations` and recorded in `tracking_raw.json`
+- `vision/plot_reconstruction.py` plots observed vs simulated trajectories
 
 Create the venv once:
 
@@ -235,11 +256,10 @@ SAM 2.1 tiny weights download to `checkpoints/sam2.1_hiera_tiny.pt` on first run
 | `synthetic_fit` | generate 241 frames with two ground contacts, recover known `vx0, vy0, g, e`, enforce explicit tolerances, and reject a perturbed negative control |
 | `vision/test_trajectory.py` | CPU mask centroid/bbox extraction |
 
-## What is intentionally not in Checkpoint 2
+## What is intentionally not in Checkpoint 3
 
-- C++ fitting of a tracked real video through `phystwin fit`
 - robust loss, confidence weights, smoothing, or outlier rejection
-- plots beyond the tracking preview PNG, GIFs, frontend
+- video overlay, GIFs, frontend
 - Ceres, Eigen, or OpenCV C++ packages
 - SAM 2 CUDA post-process extension (`nvcc` not installed)
-- a phone-camera clip in git. The measured run used a generated bounce video
+- a phone-camera clip in git. The measured run used a free Mixkit stock clip

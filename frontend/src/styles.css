@@ -1,0 +1,486 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f1113;
+  --panel: #171a1e;
+  --line: #2c323a;
+  --text: #e7eaee;
+  --muted: #9aa3ad;
+  --obs: #30b4dc;
+  --sim: #ff6030;
+  --warn: #e6b84d;
+  --bad: #e25b5b;
+  --ok: #5dba7a;
+  --btn: #22272e;
+  /* Both comparison panes use this height so the result fits one screen. */
+  --media-h: clamp(190px, 38vh, 400px);
+  --frame-h: clamp(220px, 46vh, 470px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 "Segoe UI", system-ui, sans-serif;
+}
+
+.page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px 20px 40px;
+}
+
+.top {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hint,
+.coords,
+.legend,
+.facts {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 13px;
+}
+
+/* Stepper */
+
+.stepper {
+  display: flex;
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.stepper li {
+  counter-increment: step;
+}
+
+.stepper li::before {
+  content: counter(step);
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: 11px;
+}
+
+.stepper li.on {
+  color: var(--text);
+}
+
+.stepper li.on::before {
+  border-color: var(--obs);
+  color: var(--obs);
+}
+
+.stepper li.done::before {
+  content: "✓";
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+/* Blocks */
+
+.panel,
+.pane,
+.sourcebar,
+.verdict,
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.panel {
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.sourcebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.sourcebar .name {
+  font-weight: 600;
+}
+
+.sourcebar button {
+  margin-left: auto;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+button,
+.upload {
+  background: var(--btn);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 11px;
+  cursor: pointer;
+  font: inherit;
+}
+
+button.primary {
+  background: #1d4f66;
+  border-color: #2f7c9e;
+}
+
+button:disabled,
+.upload:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button:hover:not(:disabled),
+.upload:hover {
+  border-color: #4a5561;
+}
+
+.kind {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.upload {
+  position: relative;
+  overflow: hidden;
+}
+
+.upload input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.banner {
+  border-radius: 8px;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+}
+
+.banner.bad {
+  background: #3a1818;
+  border: 1px solid var(--bad);
+  color: #ffd0d0;
+}
+
+/* Step 2: click the object */
+
+.clickstep {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 16px;
+  align-items: start;
+}
+
+.clickmedia {
+  display: flex;
+  justify-content: center;
+}
+
+.frame-box {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  background: #000;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.frame-box img {
+  display: block;
+  max-height: var(--frame-h);
+  max-width: 100%;
+  object-fit: contain;
+  cursor: crosshair;
+}
+
+.marker {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px solid #b8ff5a;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px #000;
+}
+
+.clickform {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.clickform p {
+  margin: 0;
+}
+
+.ground {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ground input {
+  background: #101317;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+}
+
+/* Processing */
+
+.stage {
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+
+.stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: #6d757e;
+}
+
+.stages li.done {
+  color: var(--ok);
+}
+
+.stages li.on {
+  color: var(--text);
+}
+
+/* Result */
+
+/* minmax(0, 1fr) keeps both panes exactly equal. Plain 1fr lets the video and
+   the canvas push their column wider, which misaligns the comparison. */
+.viewer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pane {
+  padding: 12px;
+}
+
+.pane.media video,
+.scene-wrap {
+  display: block;
+  width: 100%;
+  height: var(--media-h);
+  background: #000;
+  border-radius: 6px;
+}
+
+.pane.media video {
+  object-fit: contain;
+}
+
+.scene-wrap {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Pin the canvas to its wrapper so its intrinsic buffer size never feeds back
+   into grid layout. Scene.tsx sizes the drawing buffer from the same box. */
+.scene-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.transport {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+
+.transport input[type="range"] {
+  flex: 1;
+  min-width: 180px;
+}
+
+.legend {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.obs {
+  color: var(--obs);
+}
+
+.sim {
+  color: var(--sim);
+}
+
+.verdict {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+}
+
+.verdict strong {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 13px;
+}
+
+.verdict span {
+  color: var(--muted);
+}
+
+.verdict.good {
+  border-color: var(--ok);
+}
+
+.verdict.good strong {
+  color: var(--ok);
+}
+
+.verdict.fair {
+  border-color: var(--warn);
+}
+
+.verdict.fair strong {
+  color: var(--warn);
+}
+
+.verdict.poor {
+  border-color: var(--bad);
+}
+
+.verdict.poor strong {
+  color: var(--bad);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+}
+
+.card .label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.card .value {
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+}
+
+.card .sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.traj-canvas {
+  width: 100%;
+  background: #000;
+  border-radius: 6px;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 5px 12px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.kv dt {
+  color: var(--muted);
+}
+
+.kv dd {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .viewer,
+  .clickstep {
+    grid-template-columns: 1fr;
+  }
+}

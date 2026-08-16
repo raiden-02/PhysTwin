@@ -38,6 +38,10 @@ samples/*.webm
 results/*
 !results/.gitkeep
 
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
 # IDE / OS
 .idea/
 .vscode/

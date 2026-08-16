@@ -2,27 +2,28 @@
 
 PhysTwin reconstructs a simple 2D physics motion from a short fixed-camera video of one moving object.
 
-This document is the Day-1 design. It matches `career-os/portfolio/phystwin.md`. Checkpoint 6 applies the accepted V1 audit: honest recorded vs rendered vs synthetic labels, a saved poor-fit case, and a dropped-frame test. React/Three.js and Ceres are still out of this checkpoint.
+This document is the Day-1 design plus the Checkpoint 7 local UI. Checkpoint 6 remains the audited C++/SAM 2 baseline: honest recorded vs rendered vs synthetic labels, a saved poor-fit case, and a dropped-frame test. Ceres is still out. Extra recorded clips are Checkpoint 8.
 
 ## Pipeline
 
 ```text
-real video + one click/box
+real video + one click
         |
         v
 Python worker (SAM 2 / PyTorch / CUDA)
   track.py writes tracking.json
         |
         v
-C++20 core (this repo)
-  phystwin fit tracking.json --output reconstruction.json
+C++20 core
+  phystwin fit → reconstruction.json
         |
-        v
-plot_reconstruction.py and overlay_comparison.py
-  observed vs simulated + RMSE, optional GIF
+        +--> plot_reconstruction.py / overlay_comparison.py
+        |
+        +--> vision/serve.py + frontend/
+             local React UI: stages, playback, Three.js reconstruction
 ```
 
-No gRPC, queues, or service mesh in V1. The languages talk through JSON files.
+No gRPC, queues, or service mesh. The languages talk through JSON files. FastAPI is only a localhost adapter.
 
 ## Repository layout
 
@@ -32,7 +33,8 @@ phystwin/
   cpp/include/phystwin/   public types and interfaces
   cpp/src/                implementations
   cpp/tests/              CTest targets
-  vision/                 Python SAM 2 worker (Checkpoint 2)
+  vision/                 Python SAM 2 worker + FastAPI UI adapter
+  frontend/               React + TypeScript + Three.js local UI
   samples/                tiny JSON fixtures. Large videos stay local
   results/                measured outputs. Not committed
   docs/architecture.md    this file
@@ -40,7 +42,7 @@ phystwin/
   docs/demo/              committed overlays, GIF, three-case plot
 ```
 
-`frontend/` was not created. The overlay GIF and trajectory plot are the V1 demo.
+`scripts/serve-ui.ps1` builds `frontend/` and serves it from `vision/serve.py` on `http://127.0.0.1:8765`.
 
 ## Language split
 
@@ -53,16 +55,17 @@ C++20 owns:
 - metrics and synthetic tests
 - the `phystwin` CLI
 
-Python owns only the ML worker:
+Python owns the ML worker and the localhost adapter:
 
 - load SAM 2 / PyTorch
 - accept a click or box on frame 0
 - propagate the mask through the clip on the local RTX 4080
 - emit `tracking.json`
+- `vision/serve.py` runs those steps and `phystwin.exe` for the browser
 
 Do not port SAM 2 to C++ in V1.
 
-TypeScript / React / Three.js was skipped. Checkpoint 4 ships matplotlib plots plus an OpenCV/Pillow side-by-side overlay.
+TypeScript / React / Three.js owns the product loop: upload, click, stage display, synchronized playback, reconstructed motion, metrics. Three.js draws the simulated trajectory on the source video plane. It is not a general 3D engine.
 
 ## JSON contracts
 
@@ -224,8 +227,8 @@ The choice must be justified from observed behavior, not from solver fashion.
 | Video / masks | OpenCV via `opencv-python` | 2 | implemented in the 3.11 venv |
 | SAM 2 inference | PyTorch 2.13.0+cu126 + SAM 2.1 tiny | 2 | implemented on RTX 4080 SUPER. `SAM2_BUILD_CUDA=0` because `nvcc` is missing |
 | Plots | matplotlib `plot_reconstruction.py` / `plot_evaluation.py` | 4 | implemented |
-| Overlay GIF | OpenCV + Pillow `overlay_comparison.py` | 4 | implemented, no frontend |
-| Interactive UI | React + TypeScript + Three.js | skipped | overlay plot/GIF is the demo |
+| Overlay GIF | OpenCV + Pillow `overlay_comparison.py` | 4 | implemented, no frontend required |
+| Interactive UI | React + TypeScript + Three.js + FastAPI | 7 | local only, `scripts/serve-ui.ps1` |
 
 Ceres, Eigen, OpenCV, and PyTorch are not in the C++ CMake graph. A missing optional package must not break `cmake --build`.
 
@@ -251,6 +254,8 @@ Checkpoint 6:
 - `vision/overlay_comparison.py` writes a side-by-side MP4, still PNG, and optional GIF
 - `vision/plot_evaluation.py` builds the three-case README figure from `results/cases/manifest.json`
 - `scripts/run-eval.ps1` requires `samples/bounce.mp4`, tracks Mixkit into a dedicated path, writes a poor-fit case, and refreshes `docs/evaluation.json`
+- `vision/serve.py` is a localhost FastAPI adapter: upload or sample, first-frame click, SAM 2, `phystwin fit`, SSE stages, JSON result
+- `frontend/` is the React + TypeScript + Three.js UI
 
 Create the venv once:
 
@@ -268,14 +273,14 @@ SAM 2.1 tiny weights download to `checkpoints/sam2.1_hiera_tiny.pt` on first run
 | `synthetic_fit` | generate 241 frames with two ground contacts, recover known `vx0, vy0, g, e`, enforce explicit tolerances, and reject a perturbed negative control |
 | `dropped_frame` | drop a contiguous interior gap from a synthetic trajectory, assert the simulator samples the remaining timestamps, and recover the same parameters |
 | `vision/test_trajectory.py` | CPU mask centroid/bbox extraction |
+| `vision/test_serve.py` | UI server can find `phystwin.exe` and list Mixkit when present |
 
-## What is intentionally not in Checkpoint 6
+## What is intentionally not in Checkpoint 7
 
-- React / TypeScript / Three.js
 - Ceres
 - physical-scale calibration
 - additional recorded camera clips
 - robust loss, confidence weights, smoothing, or outlier rejection
 - Eigen or OpenCV C++ packages
 - SAM 2 CUDA post-process extension (`nvcc` not installed)
-- a phone-camera clip in git. Recorded evidence is the Mixkit stock clip. The other two video cases are rendered, then tracked with SAM 2
+- a phone-camera clip in git. Recorded evidence is still the Mixkit stock clip. The other two video cases are rendered, then tracked with SAM 2

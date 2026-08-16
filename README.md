@@ -2,7 +2,7 @@
 
 PhysTwin turns a short fixed-camera video into a fitted physics reconstruction: select one moving object, track it on the GPU, infer the physical parameters that best reproduce its motion, and compare the recording with the reconstructed trajectory and measured error.
 
-**Status:** Checkpoint 6. Audited C++/SAM 2 core with honest recorded vs rendered vs synthetic labels. No React, Three.js, or Ceres.
+**Status:** Checkpoint 7. Local React + TypeScript + Three.js UI on top of the audited C++/SAM 2 core. No Ceres. No extra recorded clips.
 
 ![Recorded Mixkit tennis: observed vs simulated overlay](docs/demo/mixkit_overlay.gif)
 
@@ -36,7 +36,7 @@ video + one click
   → overlay + RMSE
 ```
 
-Python owns tracking. C++ owns physics, fitting, and metrics. The languages talk through JSON files.
+Python owns tracking. C++ owns physics, fitting, and metrics. A small FastAPI process on localhost connects the browser to those two. The languages still talk through JSON files.
 
 ## Results
 
@@ -69,11 +69,27 @@ Noise-free 241-frame recovery: RMSE 9.01e-07 px. Parameter errors are at most 2.
 
 ## Resume wording
 
-Safe with the current evidence. Do not add Ceres or Three.js until they ship.
+Safe with the current evidence. Do not add Ceres until it ships. Do not quote rendered 0.42/0.35 px as real-footage accuracy.
 
 > Built a C++20 video-to-simulation system that converts GPU-tracked object motion from recorded footage into a fitted image-space physics reconstruction, estimating initial velocity, gravity scale, and collision restitution through numerical system identification.
 
 > Integrated local PyTorch/SAM 2 video tracking on an NVIDIA RTX 4080 SUPER and evaluated reconstructed motion on one recorded Mixkit clip (13.79 px RMSE, 1.00 frame bounce timing, `fair`, with 1.57% vertical-axis error) plus rendered SAM 2 pipeline checks and a noise-free C++ synthetic recovery test.
+
+> Shipped a local React + TypeScript + Three.js product UI, with a small FastAPI process that runs SAM 2 and `phystwin.exe`, then shows synchronized recording vs reconstructed motion, trajectories, fitted parameters, and poor-fit warnings.
+
+## Local UI
+
+One command after the venv and `phystwin.exe` exist:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\serve-ui.ps1
+```
+
+Open http://127.0.0.1:8765. Pick the Mixkit sample or upload a clip, click the object on frame 0, then wait for real pipeline stages (decode, load SAM 2, track, fit). Play and scrub the recording next to the Three.js reconstruction.
+
+`scripts\serve-ui.ps1 -Dev` runs Vite at http://127.0.0.1:5173 and proxies `/api` to the same FastAPI process.
+
+The browser never talks to C++ or PyTorch directly. `vision/serve.py` binds 127.0.0.1 only.
 
 ## How it works
 
@@ -84,16 +100,18 @@ Short version: Python writes pixel-space observations. C++ fits `vx0`, `vy0`, gr
 ## Architecture
 
 ```text
-video + click
+video + click in the local UI
+    → vision/serve.py              FastAPI on 127.0.0.1:8765
     → vision/track.py              Python / PyTorch / SAM 2 / RTX 4080
     → tracking.json
     → phystwin fit                 C++20
     → reconstruction.json
-    → plot_reconstruction.py
-    → overlay_comparison.py        side-by-side video + GIF
+    → frontend/                    React + TypeScript + Three.js
 ```
 
-No gRPC, queues, or a web frontend in this checkpoint.
+CLI overlay plots still work. They are not required for the product loop.
+
+No gRPC, queues, or cloud services.
 
 ## System identification
 
@@ -129,7 +147,7 @@ Bounce timing is a high-y local-max heuristic paired within 8 frames. It is an e
 
 ## Build and run
 
-Windows, Visual Studio 18 Community. CMake is bundled with Visual Studio. It is **not** on PATH in a regular PowerShell.
+Windows, Visual Studio 18 Community, Node.js (for the UI). CMake is bundled with Visual Studio. It is **not** on PATH in a regular PowerShell.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
@@ -141,6 +159,12 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup-vision.ps1
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1
+```
+
+Local product UI (needs Node.js, the venv, and `build\Release\phystwin.exe`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\serve-ui.ps1
 ```
 
 One Mixkit reconstruction (needs `samples\bounce.mp4` locally):
@@ -184,8 +208,8 @@ ctest --test-dir build -C Release --output-on-failure
 - Bounce-contact frames are a plot heuristic. Pixel RMSE is the number to quote.
 - SAM 2's optional CUDA hole-filling kernel is not built (`nvcc` is missing). Tracking still runs on GPU through PyTorch.
 - System Python on this machine is 3.14 beta. Use `scripts\setup-vision.ps1` so SAM 2 / PyTorch run on 3.11.
-- No React / Three.js viewer. The Mixkit overlay still and the three-case plot are the demo.
+- The UI is local-only. One GPU job at a time. Progress is stage-based, not a fake percent complete.
 
 ## Roadmap
 
-After this audited baseline: product UI, more recorded clips, optional calibration, a justified solver comparison. Not this checkpoint.
+After this UI: more recorded clips, optional calibration, a justified solver comparison. Not this checkpoint.

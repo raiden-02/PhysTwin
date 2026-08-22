@@ -48,11 +48,26 @@ int main() {
         require(loaded.observations[0].confidence.has_value(), "confidence present");
         require(nearly_equal(*loaded.observations[0].confidence, 0.9), "confidence value");
         require(!loaded.observations[1].confidence.has_value(), "confidence omitted");
+        require(loaded.model == phystwin::DynamicsModel::projectile_bounce,
+                "legacy/default model");
 
         phystwin::Trajectory same = loaded;
         const double zero = phystwin::rmse(loaded, same);
         require(nearly_equal(zero, 0.0), "RMSE of identical trajectories");
 
+        std::filesystem::remove(path);
+
+        phystwin::Trajectory pendulum = original;
+        pendulum.model = phystwin::DynamicsModel::pendulum;
+        pendulum.pivot = phystwin::ReferencePoint{500.0, 100.0};
+        phystwin::save_tracking(pendulum, path);
+        const phystwin::Trajectory loaded_pendulum =
+            phystwin::load_tracking(path);
+        require(loaded_pendulum.model == phystwin::DynamicsModel::pendulum,
+                "pendulum model");
+        require(loaded_pendulum.pivot.has_value(), "pendulum pivot present");
+        require(nearly_equal(loaded_pendulum.pivot->x, 500.0), "pivot x");
+        require(nearly_equal(loaded_pendulum.pivot->y, 100.0), "pivot y");
         std::filesystem::remove(path);
         std::cout << "io_roundtrip: ok\n";
         return 0;

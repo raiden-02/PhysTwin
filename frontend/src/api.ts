@@ -1,4 +1,4 @@
-import type { Job, ProgressEvent, Result, Sample } from "./types";
+import type { DynamicsModel, Job, ProgressEvent, Result, Sample } from "./types";
 
 async function parseError(response: Response): Promise<string> {
   try {
@@ -21,17 +21,25 @@ export async function fetchSamples(): Promise<Sample[]> {
   return body.samples as Sample[];
 }
 
-export async function createJobFromSample(sampleId: string): Promise<Job> {
+export async function createJobFromSample(
+  sampleId: string,
+  model: DynamicsModel,
+): Promise<Job> {
   const body = new FormData();
   body.append("sample_id", sampleId);
+    body.append("model", model);
   const response = await fetch("/api/jobs", { method: "POST", body });
   if (!response.ok) throw new Error(await parseError(response));
   return response.json();
 }
 
-export async function createJobFromFile(file: File): Promise<Job> {
+export async function createJobFromFile(
+  file: File,
+  model: DynamicsModel,
+): Promise<Job> {
   const body = new FormData();
   body.append("file", file);
+    body.append("model", model);
   const response = await fetch("/api/jobs", { method: "POST", body });
   if (!response.ok) throw new Error(await parseError(response));
   return response.json();
@@ -41,12 +49,19 @@ export async function runJob(
   jobId: string,
   x: number,
   y: number,
+  pivot: { x: number; y: number } | null,
   groundY: number | null,
 ): Promise<Job> {
   const response = await fetch(`/api/jobs/${jobId}/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ x, y, ground_y: groundY }),
+    body: JSON.stringify({
+      x,
+      y,
+      pivot_x: pivot?.x ?? null,
+      pivot_y: pivot?.y ?? null,
+      ground_y: groundY,
+    }),
   });
   if (!response.ok) throw new Error(await parseError(response));
   return response.json();

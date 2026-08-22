@@ -32,6 +32,7 @@ export function ReconstructionScene({ video, tracking, reconstruction, time }: P
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ballRef = useRef<THREE.Mesh | null>(null);
   const obsBallRef = useRef<THREE.Mesh | null>(null);
+  const rodRef = useRef<THREE.Line | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
   useEffect(() => {
@@ -79,25 +80,50 @@ export function ReconstructionScene({ video, tracking, reconstruction, time }: P
     scene.add(lineFromPoints(tracking.observations, OBS_COLOR, 1.2));
     scene.add(lineFromPoints(reconstruction.simulated, SIM_COLOR, 1.4));
 
-    const yGround = reconstruction.environment.y_ground;
-    const ground = lineFromPoints(
-      [
-        { x: 0, y: yGround },
-        { x: width, y: yGround },
-      ],
-      "#8b9098",
-      1.1,
-    );
-    scene.add(ground);
+    if (reconstruction.model === "projectile_bounce") {
+      const yGround = reconstruction.environment.y_ground;
+      scene.add(
+        lineFromPoints(
+          [
+            { x: 0, y: yGround },
+            { x: width, y: yGround },
+          ],
+          "#8b9098",
+          1.1,
+        ),
+      );
+    } else {
+      const { pivot_x: pivotX, pivot_y: pivotY, radius: swingRadius } =
+        reconstruction.environment;
+      const pivot = new THREE.Mesh(
+        new THREE.SphereGeometry(Math.max(6, Math.min(16, swingRadius * 0.04)), 20, 12),
+        new THREE.MeshBasicMaterial({ color: "#f2d96b" }),
+      );
+      pivot.position.set(pivotX, -pivotY, 3.2);
+      scene.add(pivot);
+
+      const first = reconstruction.simulated[0];
+      const rod = lineFromPoints(
+        [
+          { x: pivotX, y: pivotY },
+          { x: first.x, y: first.y },
+        ],
+        "#d5d9de",
+        2.2,
+      );
+      scene.add(rod);
+      rodRef.current = rod;
+    }
 
     const radius =
       tracking.observations.find((p) => p.radius && p.radius > 1)?.radius ?? 18;
+    const proxyRadius = Math.max(7, Math.min(28, radius * 0.2));
     const simBall = new THREE.Mesh(
-      new THREE.SphereGeometry(Math.max(8, radius * 0.22), 24, 16),
+      new THREE.SphereGeometry(proxyRadius, 24, 16),
       new THREE.MeshBasicMaterial({ color: SIM_COLOR }),
     );
     const obsBall = new THREE.Mesh(
-      new THREE.SphereGeometry(Math.max(6, radius * 0.16), 16, 12),
+      new THREE.SphereGeometry(Math.max(5, 0.7 * proxyRadius), 16, 12),
       new THREE.MeshBasicMaterial({ color: OBS_COLOR }),
     );
     scene.add(simBall);
@@ -148,6 +174,7 @@ export function ReconstructionScene({ video, tracking, reconstruction, time }: P
       rendererRef.current = null;
       ballRef.current = null;
       obsBallRef.current = null;
+      rodRef.current = null;
     };
   }, [video, tracking, reconstruction]);
 
@@ -164,6 +191,20 @@ export function ReconstructionScene({ video, tracking, reconstruction, time }: P
     }
     if (obsBallRef.current) {
       obsBallRef.current.position.set(obs.x, -obs.y, 2.6);
+    }
+    if (rodRef.current && reconstruction.model === "pendulum") {
+      const positions = rodRef.current.geometry.getAttribute(
+        "position",
+      ) as THREE.BufferAttribute;
+      positions.setXYZ(
+        0,
+        reconstruction.environment.pivot_x,
+        -reconstruction.environment.pivot_y,
+        2.2,
+      );
+      positions.setXYZ(1, sim.x, -sim.y, 2.2);
+      positions.needsUpdate = true;
+      rodRef.current.geometry.computeBoundingSphere();
     }
     renderer.render(canvas.__pt.scene, canvas.__pt.camera);
   }, [time, reconstruction, tracking]);

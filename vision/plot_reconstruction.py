@@ -43,6 +43,7 @@ def main() -> int:
 
     metrics = reconstruction["metrics"]
     parameters = reconstruction["parameters"]
+    model = reconstruction.get("model", "projectile_bounce")
     figure, axes = plt.subplots(1, 3, figsize=(16, 4.8))
 
     axes[0].plot(t, obs_x, label="observed", linewidth=1.5)
@@ -66,11 +67,20 @@ def main() -> int:
     axes[2].invert_yaxis()
     axes[2].set_aspect("equal", adjustable="datalim")
     heading = args.title + "\n" if args.title else ""
+    if model == "pendulum":
+        parameter_line = (
+            f"lambda={parameters['lambda']:.3f} s^-2, "
+            f"damping={parameters['damping']:.3f} s^-1"
+        )
+    else:
+        parameter_line = (
+            f"g={parameters['g']:.2f} px/s², e={parameters['e']:.3f}"
+        )
     axes[2].set_title(
         f"{heading}"
         f"RMSE {metrics['rmse']:.2f} px ({metrics['quality']})\n"
         f"x={metrics['rmse_x']:.2f}, y={metrics['rmse_y']:.2f} px\n"
-        f"g={parameters['g']:.2f} px/s², e={parameters['e']:.3f}"
+        f"{parameter_line}"
     )
     axes[2].set_xlabel("x (px)")
     axes[2].set_ylabel("y (px)")
@@ -83,14 +93,15 @@ def main() -> int:
     figure.savefig(output, dpi=130)
     plt.close(figure)
     print(f"wrote {output}")
-    timing = contact_timing(tracking, reconstruction)
-    print(f"observed contact frames: {timing['observed_contact_frames']}")
-    print(f"simulated contact frames: {timing['simulated_contact_frames']}")
-    if timing.get("paired"):
-        print(
-            f"mean contact timing error: {timing['mean_error_frames']:.2f} frames "
-            f"({timing['mean_error_ms']:.2f} ms)"
-        )
+    if model == "projectile_bounce":
+        timing = contact_timing(tracking, reconstruction)
+        print(f"observed contact frames: {timing['observed_contact_frames']}")
+        print(f"simulated contact frames: {timing['simulated_contact_frames']}")
+        if timing.get("paired"):
+            print(
+                f"mean contact timing error: {timing['mean_error_frames']:.2f} frames "
+                f"({timing['mean_error_ms']:.2f} ms)"
+            )
     return 0
 
 

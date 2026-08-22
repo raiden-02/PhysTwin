@@ -21,6 +21,8 @@ FetchContent_MakeAvailable(nlohmann_json)
 add_library(phystwin_core
     cpp/src/io.cpp
     cpp/src/simulator.cpp
+    cpp/src/pendulum.cpp
+    cpp/src/pendulum_fitter.cpp
     cpp/src/synthetic.cpp
     cpp/src/fitter.cpp
     cpp/src/metrics.cpp
@@ -62,4 +64,8 @@ if(PHYSTWIN_BUILD_TESTS)
     add_executable(phystwin_dropped_frame_test cpp/tests/dropped_frame_test.cpp)
     target_link_libraries(phystwin_dropped_frame_test PRIVATE phystwin_core)
     add_test(NAME dropped_frame COMMAND phystwin_dropped_frame_test)
+
+    add_executable(phystwin_pendulum_fit_test cpp/tests/pendulum_fit_test.cpp)
+    target_link_libraries(phystwin_pendulum_fit_test PRIVATE phystwin_core)
+    add_test(NAME pendulum_fit COMMAND phystwin_pendulum_fit_test)
 endif()

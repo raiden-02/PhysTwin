@@ -1,5 +1,6 @@
 #include "phystwin/fitter.hpp"
 #include "phystwin/io.hpp"
+#include "phystwin/pendulum.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -23,6 +24,8 @@ void print_usage(std::ostream& out) {
            " [--ground-y PIXELS]\n"
         << "  phystwin --help\n"
         << "  phystwin --version\n\n"
+        << "tracking.json model selects projectile_bounce (default) or pendulum.\n"
+        << "Pendulum input also requires reference.pivot_x and pivot_y.\n"
         << "--ground-y is the object's center y at ground contact. If omitted,\n"
         << "the largest observed centroid y is used.\n";
 }
@@ -33,6 +36,7 @@ int inspect(const std::filesystem::path& path) {
     const auto& last = traj.observations.back();
     std::cout << "file: " << path.string() << "\n"
               << "version: " << traj.version << "\n"
+              << "model: " << phystwin::model_name(traj.model) << "\n"
               << "fps: " << traj.fps << "\n"
               << "frame_size: " << traj.frame_width << "x" << traj.frame_height << "\n"
               << "n_observations: " << traj.observations.size() << "\n"
@@ -56,19 +60,57 @@ int fit(const std::filesystem::path& path,
         const std::filesystem::path& output,
         const std::optional<double> ground_y) {
     const phystwin::Trajectory traj = phystwin::load_tracking(path);
+    if (!output.parent_path().empty()) {
+        std::filesystem::create_directories(output.parent_path());
+    }
+    if (traj.model == phystwin::DynamicsModel::pendulum) {
+        if (ground_y.has_value()) {
+            throw std::invalid_argument("--ground-y is only valid for projectile_bounce");
+        }
+        const phystwin::PendulumReconstruction reconstruction =
+            phystwin::PendulumFitter{}.fit(traj);
+        phystwin::save_reconstruction(reconstruction, output);
+        std::cout << std::fixed << std::setprecision(6)
+                  << "input: " << path.string() << "\n"
+                  << "output: " << output.string() << "\n"
+                  << "model: pendulum\n"
+                  << "observations: " << reconstruction.n << "\n"
+                  << "pivot: " << reconstruction.environment.pivot_x << ", "
+                  << reconstruction.environment.pivot_y << " px\n"
+                  << "radius: " << reconstruction.environment.radius << " px\n"
+                  << "omega0: " << reconstruction.parameters.omega0 << " rad/s\n"
+                  << "lambda: " << reconstruction.parameters.lambda << " 1/s^2\n"
+                  << "damping: " << reconstruction.parameters.damping << " 1/s\n"
+                  << "RMSE: " << reconstruction.rmse << " px\n"
+                  << "RMSE_x: " << reconstruction.rmse_x << " px\n"
+                  << "RMSE_y: " << reconstruction.rmse_y << " px\n"
+                  << "radial_MAD: " << reconstruction.radial_mad << " px\n"
+                  << "angular_span: " << reconstruction.angular_span << " rad\n"
+                  << "pivot_adjustment: " << reconstruction.pivot_adjustment
+                  << " px\n"
+                  << "quality: " << reconstruction.quality << "\n"
+                  << "fit_seconds: " << reconstruction.fit_seconds << "\n";
+        if (reconstruction.quality == "poor") {
+            std::cerr << "poor pendulum fit: do not treat the parameters as credible.\n";
+            return 2;
+        }
+        if (reconstruction.quality == "fair") {
+            std::cerr << "warning: fair pendulum fit. Inspect the synchronized twin.\n";
+        }
+        return 0;
+    }
+
     phystwin::FitOptions options;
     options.ground_y = ground_y;
     const phystwin::Reconstruction reconstruction =
         phystwin::Fitter{}.fit(traj, options);
 
-    if (!output.parent_path().empty()) {
-        std::filesystem::create_directories(output.parent_path());
-    }
     phystwin::save_reconstruction(reconstruction, output);
 
     std::cout << std::fixed << std::setprecision(6)
               << "input: " << path.string() << "\n"
               << "output: " << output.string() << "\n"
+              << "model: projectile_bounce\n"
               << "observations: " << reconstruction.n << "\n"
               << "ground_y: " << reconstruction.environment.y_ground
               << " (" << reconstruction.ground_source << ")\n"

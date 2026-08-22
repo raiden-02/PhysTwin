@@ -122,17 +122,33 @@ def main() -> int:
     sim_map = _by_frame(reconstruction["simulated"])
     metrics = reconstruction["metrics"]
     parameters = reconstruction["parameters"]
-    timing = contact_timing(tracking, reconstruction)
-    title = args.title or Path(args.video).stem
-    metrics_line = (
-        f"RMSE {metrics['rmse']:.2f} px ({metrics['quality']})  "
-        f"g={parameters['g']:.1f} px/s^2  e={parameters['e']:.3f}"
+    model = reconstruction.get("model", "projectile_bounce")
+    timing = (
+        contact_timing(tracking, reconstruction)
+        if model == "projectile_bounce"
+        else {"paired": []}
     )
+    title = args.title or Path(args.video).stem
+    if model == "pendulum":
+        metrics_line = (
+            f"RMSE {metrics['rmse']:.2f} px ({metrics['quality']})  "
+            f"lambda={parameters['lambda']:.3f} s^-2  "
+            f"damping={parameters['damping']:.3f} s^-1"
+        )
+    else:
+        metrics_line = (
+            f"RMSE {metrics['rmse']:.2f} px ({metrics['quality']})  "
+            f"g={parameters['g']:.1f} px/s^2  e={parameters['e']:.3f}"
+        )
     if timing.get("paired"):
         metrics_line += f"  bounce {timing['mean_error_frames']:.2f} fr"
     header = [title, metrics_line]
 
-    contacts = contact_frames(tracking["observations"])
+    contacts = (
+        contact_frames(tracking["observations"])
+        if model == "projectile_bounce"
+        else []
+    )
     still_index = args.still_frame
     if still_index < 0:
         if contacts and contacts[0] >= 12:

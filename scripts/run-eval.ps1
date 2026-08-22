@@ -1,8 +1,10 @@
-# Checkpoint 6 evaluation: Mixkit recorded clip, two generated clips, synthetic
-# recovery, and an explicit poor-fit case. Writes measured JSON and demo artifacts.
+# Recorded, rendered, synthetic, and explicit poor-fit evaluation.
+# Writes measured JSON and demo artifacts.
 # Does not invent metrics.
 param(
-    [switch]$SkipTracking
+    [switch]$SkipTracking,
+    [string]$PendulumPoint = "111,858",
+    [string]$PendulumPivot = "385,92"
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,10 +13,12 @@ Set-Location (Split-Path -Parent $PSScriptRoot)
 $py = ".\.venv\Scripts\python.exe"
 $exe = ".\build\Release\phystwin.exe"
 $synth = ".\build\Release\phystwin_synthetic_fit_test.exe"
+$pendulumSynth = ".\build\Release\phystwin_pendulum_fit_test.exe"
 
 if (-not (Test-Path $py)) { throw "missing $py. Run scripts\setup-vision.ps1 first." }
 if (-not (Test-Path $exe)) { throw "missing $exe. Run scripts\build.ps1 first." }
 if (-not (Test-Path $synth)) { throw "missing $synth. Run scripts\build.ps1 first." }
+if (-not (Test-Path $pendulumSynth)) { throw "missing $pendulumSynth. Run scripts\build.ps1 first." }
 if (-not (Test-Path samples\bounce.mp4)) {
     throw "missing samples\bounce.mp4. Download the Mixkit tennis clip before running evaluation."
 }
@@ -27,10 +31,12 @@ function Invoke-Checked {
 
 New-Item -ItemType Directory -Force -Path `
     results\cases\synthetic, `
+    results\cases\pendulum_synthetic, `
     results\cases\mixkit_tennis, `
     results\cases\mixkit_bad_ground, `
     results\cases\generated_diagonal, `
     results\cases\generated_drop, `
+    results\cases\pendulum_recorded, `
     docs\demo | Out-Null
 
 Write-Host "=== synthetic recovery ==="
@@ -38,6 +44,12 @@ $synthLog = "results\cases\synthetic\stdout.txt"
 cmd /c ".\build\Release\phystwin_synthetic_fit_test.exe > $synthLog"
 if ($LASTEXITCODE -ne 0) { throw "synthetic_fit test failed" }
 Get-Content $synthLog
+
+Write-Host "=== pendulum synthetic recovery and robustness ==="
+$pendulumSynthLog = "results\cases\pendulum_synthetic\stdout.txt"
+cmd /c ".\build\Release\phystwin_pendulum_fit_test.exe > $pendulumSynthLog"
+if ($LASTEXITCODE -ne 0) { throw "pendulum_fit test failed" }
+Get-Content $pendulumSynthLog
 
 Write-Host "=== generate clips ==="
 Invoke-Checked { & $py vision\make_bounce_clip.py `
@@ -72,6 +84,20 @@ if (-not $SkipTracking) {
     }
 }
 
+$hasPendulumClip = Test-Path samples\recorded\pendulum.mp4
+$pendulumTracking = "results\cases\pendulum_recorded\tracking.json"
+$pendulumReconstruction = "results\cases\pendulum_recorded\reconstruction.json"
+if ($hasPendulumClip -and -not (Test-Path $pendulumTracking)) {
+    if ($SkipTracking) {
+        throw "pendulum tracking is missing and -SkipTracking was set"
+    }
+    Write-Host "=== track recorded physical pendulum ==="
+    Invoke-Checked { & $py vision\track.py samples\recorded\pendulum.mp4 `
+        --model pendulum --point $PendulumPoint --pivot $PendulumPivot `
+        --output $pendulumTracking `
+        --viz results\cases\pendulum_recorded\tracking_preview.png }
+}
+
 Write-Host "=== fit ==="
 Invoke-Checked { & $exe fit results\cases\mixkit_tennis\tracking.json `
     --output results\cases\mixkit_tennis\reconstruction.json }
@@ -79,6 +105,12 @@ Invoke-Checked { & $exe fit results\cases\generated_diagonal\tracking.json `
     --output results\cases\generated_diagonal\reconstruction.json }
 Invoke-Checked { & $exe fit results\cases\generated_drop\tracking.json `
     --output results\cases\generated_drop\reconstruction.json }
+if ($hasPendulumClip) {
+    & $exe fit $pendulumTracking --output $pendulumReconstruction
+    if ($LASTEXITCODE -notin 0, 2) {
+        throw "pendulum fit failed with exit $LASTEXITCODE"
+    }
+}
 
 Write-Host "=== explicit poor-fit case (ground below observed centroids) ==="
 & $exe fit results\cases\mixkit_tennis\tracking.json `
@@ -138,6 +170,25 @@ Invoke-Checked { & $py vision\overlay_comparison.py `
     --gif docs\demo\drop_overlay.gif `
     --still docs\demo\drop_overlay.png `
     --title "Generated near-vertical drop" }
+if ($hasPendulumClip) {
+    Invoke-Checked { & $py vision\plot_reconstruction.py `
+        $pendulumTracking `
+        $pendulumReconstruction `
+        --output results\cases\pendulum_recorded\reconstruction_preview.png `
+        --title "Recorded physical pendulum" }
+    Invoke-Checked { & $py vision\overlay_comparison.py `
+        samples\recorded\pendulum.mp4 `
+        $pendulumTracking `
+        $pendulumReconstruction `
+        --output results\cases\pendulum_recorded\overlay.mp4 `
+        --gif docs\demo\pendulum_recorded_overlay.gif `
+        --still docs\demo\pendulum_recorded_overlay.png `
+        --panel-height 320 `
+        --gif-stride 4 `
+        --gif-max-width 540 `
+        --gif-colors 48 `
+        --title "Recorded physical pendulum" }
+}
 
 $manifest = @{
     cases = @(
@@ -147,6 +198,13 @@ $manifest = @{
             kind = "cpp_synthetic"
             stdout = "results/cases/synthetic/stdout.txt"
             notes = "Noise-free 241-frame two-bounce case from phystwin_synthetic_fit_test. Not video evidence."
+        }
+        @{
+            id = "pendulum_synthetic"
+            title = "C++ pendulum synthetic recovery"
+            kind = "cpp_pendulum_synthetic"
+            stdout = "results/cases/pendulum_synthetic/stdout.txt"
+            notes = "Full nonlinear damped-pendulum recovery, deterministic noise/outliers, and five degenerate-input checks. Not video evidence."
         }
         @{
             id = "mixkit_tennis"
@@ -207,6 +265,25 @@ $manifest = @{
         }
     )
 }
+if ($hasPendulumClip) {
+    $manifest.cases += @{
+        id = "pendulum_recorded"
+        title = "Recorded physical pendulum"
+        kind = "recorded_video"
+        video = "samples/recorded/pendulum.mp4"
+        point = $PendulumPoint
+        pivot = $PendulumPivot
+        source = "https://www.youtube.com/shorts/ZveeQePGkNg"
+        notes = "Fixed-camera physical pendulum. The source is trimmed at frame 70 to remove hand contact and start at a clean turning point."
+        tracking = $pendulumTracking.Replace("\", "/")
+        tracking_raw = "results/cases/pendulum_recorded/tracking_raw.json"
+        reconstruction = $pendulumReconstruction.Replace("\", "/")
+        plot = "results/cases/pendulum_recorded/reconstruction_preview.png"
+        overlay = "results/cases/pendulum_recorded/overlay.mp4"
+        gif = "docs/demo/pendulum_recorded_overlay.gif"
+        still = "docs/demo/pendulum_recorded_overlay.png"
+    }
+}
 
 $manifestPath = "results\cases\manifest.json"
 ($manifest | ConvertTo-Json -Depth 6) | Set-Content -Encoding utf8 $manifestPath
@@ -215,4 +292,4 @@ Write-Host "wrote $manifestPath"
 Invoke-Checked { & $py vision\collect_evaluation.py --manifest $manifestPath --output docs\evaluation.json }
 Invoke-Checked { & $py vision\plot_evaluation.py --manifest $manifestPath --output docs\demo\observed_vs_simulated.png }
 
-Write-Host "Checkpoint 6 eval artifacts are in docs\demo and docs\evaluation.json"
+Write-Host "Evaluation artifacts are in docs\demo and docs\evaluation.json"

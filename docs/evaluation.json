@@ -35,15 +35,48 @@
       "search_generations": 160,
       "refinement_iterations": 23,
       "iterations": null,
-      "fit_seconds": 0.0155976,
-      "stdout": "synthetic parameter recovery\r\nparameter     actual       recovered      abs_error\r\nvx0           180          180          2.84217e-14\r\nvy0           -420         -420         1.54178e-07\r\ng             980          980          2.50759e-06\r\ne             0.72         0.72         7.91809e-10\r\nRMSE: 9.01143e-07 px\r\nMAE: 5.99064e-07 px\r\nperturbed RMSE: 65.7512 px\r\nsearch_generations: 160\r\nrefinement_iterations: 23\r\nfit time: 0.0155976 s"
+      "fit_seconds": 0.0160566,
+      "stdout": "synthetic parameter recovery\r\nparameter     actual       recovered      abs_error\r\nvx0           180          180          2.84217e-14\r\nvy0           -420         -420         1.54178e-07\r\ng             980          980          2.50759e-06\r\ne             0.72         0.72         7.91809e-10\r\nRMSE: 9.01143e-07 px\r\nMAE: 5.99064e-07 px\r\nperturbed RMSE: 65.7512 px\r\nsearch_generations: 160\r\nrefinement_iterations: 23\r\nfit time: 0.0160566 s"
+    },
+    {
+      "id": "pendulum_synthetic",
+      "title": "C++ pendulum synthetic recovery",
+      "kind": "cpp_pendulum_synthetic",
+      "notes": "Full nonlinear damped-pendulum recovery, deterministic noise/outliers, and five degenerate-input checks. Not video evidence.",
+      "parameters": {
+        "omega0": {
+          "actual": -0.35,
+          "recovered": -0.35,
+          "abs_error": 2.92155e-12
+        },
+        "lambda": {
+          "actual": 7.2,
+          "recovered": 7.2,
+          "abs_error": 6.2883e-13
+        },
+        "damping": {
+          "actual": 0.22,
+          "recovered": 0.22,
+          "abs_error": 1.876e-13
+        }
+      },
+      "rmse_px": 1.29064e-10,
+      "noisy_outlier_rmse_px": 2.62899,
+      "noisy_lambda": 7.19915,
+      "noisy_damping": 0.217734,
+      "fit_seconds": 0.309859,
+      "degenerate_checks": 5,
+      "search_generations": 220,
+      "stdout": "pendulum synthetic recovery\r\nparameter     actual       recovered      abs_error\r\nomega0        -0.35        -0.35          2.92155e-12\r\nlambda        7.2          7.2          6.2883e-13\r\ndamping       0.22         0.22          1.876e-13\r\nRMSE: 1.29064e-10 px\r\nnoisy/outlier RMSE: 2.62899 px\r\nnoisy lambda: 7.19915\r\nnoisy damping: 0.217734\r\nfast lambda: 32\r\nfast RMSE: 5.84139e-12 px\r\ndegenerate_checks: 5\r\nsearch_generations: 220\r\nfit time: 0.309859 s"
     },
     {
       "id": "mixkit_tennis",
       "title": "Mixkit tennis bounce",
       "kind": "recorded_video",
+      "model": "projectile_bounce",
       "video": "samples/bounce.mp4",
       "point": "375,722",
+      "pivot": null,
       "source": "https://mixkit.co/free-stock-video/tennis-ball-bouncing-in-slow-motion-101289/",
       "notes": "Slow-motion close-up recorded clip. Primary external-validity case.",
       "fps": 24.0,
@@ -57,7 +90,7 @@
         "vy0": 706.5406915873825
       },
       "metrics": {
-        "fit_seconds": 0.0189816,
+        "fit_seconds": 0.0184097,
         "ground_source": "max_observed_centroid_y",
         "ground_violation": 0.0,
         "iterations": 183,
@@ -121,15 +154,18 @@
         "point": [
           375.0,
           722.0
-        ]
+        ],
+        "pivot": null
       }
     },
     {
       "id": "mixkit_bad_ground",
       "title": "Mixkit explicit bad ground",
       "kind": "recorded_video_failure",
+      "model": "projectile_bounce",
       "video": "samples/bounce.mp4",
       "point": "375,722",
+      "pivot": null,
       "source": null,
       "notes": "Same Mixkit tracking with --ground-y 800. Expected quality poor and CLI exit 2.",
       "fps": 24.0,
@@ -143,7 +179,7 @@
         "vy0": 646.6439241065198
       },
       "metrics": {
-        "fit_seconds": 0.0561705,
+        "fit_seconds": 0.0186044,
         "ground_source": "explicit",
         "ground_violation": 108.99288662145625,
         "iterations": 185,
@@ -203,15 +239,18 @@
         "point": [
           375.0,
           722.0
-        ]
+        ],
+        "pivot": null
       }
     },
     {
       "id": "generated_diagonal",
       "title": "Generated diagonal bounce",
       "kind": "generated_video",
+      "model": "projectile_bounce",
       "video": "samples/generated_diagonal.mp4",
       "point": "80,40",
+      "pivot": null,
       "source": null,
       "notes": "Rendered diagonal bounce (vx=140, vy=20, g=1800, e=0.72). Same integrator family as the fitter. Pipeline check, not real-footage accuracy.",
       "fps": 60.0,
@@ -225,7 +264,7 @@
         "vy0": 20.77061756813787
       },
       "metrics": {
-        "fit_seconds": 0.0127349,
+        "fit_seconds": 0.034381,
         "ground_source": "max_observed_centroid_y",
         "ground_violation": 0.0,
         "iterations": 183,
@@ -313,15 +352,18 @@
         "point": [
           80.0,
           40.0
-        ]
+        ],
+        "pivot": null
       }
     },
     {
       "id": "generated_drop",
       "title": "Generated near-vertical drop",
       "kind": "generated_video",
+      "model": "projectile_bounce",
       "video": "samples/generated_drop.mp4",
       "point": "320,36",
+      "pivot": null,
       "source": null,
       "notes": "Rendered near-vertical drop (vx=4, vy=50, g=1600, e=0.40). Same integrator family as the fitter. Pipeline check, not real-footage accuracy.",
       "fps": 60.0,
@@ -335,7 +377,7 @@
         "vy0": 49.74176644012113
       },
       "metrics": {
-        "fit_seconds": 0.0123388,
+        "fit_seconds": 0.0348755,
         "ground_source": "max_observed_centroid_y",
         "ground_violation": 0.0,
         "iterations": 183,
@@ -442,6 +484,68 @@
         "point": [
           320.0,
           36.0
+        ],
+        "pivot": null
+      }
+    },
+    {
+      "id": "pendulum_recorded",
+      "title": "Recorded physical pendulum",
+      "kind": "recorded_video",
+      "model": "pendulum",
+      "video": "samples/recorded/pendulum.mp4",
+      "point": "111,858",
+      "pivot": "385,92",
+      "source": "https://www.youtube.com/shorts/ZveeQePGkNg",
+      "notes": "Fixed-camera physical pendulum. The source is trimmed at frame 70 to remove hand contact and start at a clean turning point.",
+      "fps": 30.0,
+      "frame_width": 720,
+      "frame_height": 1036,
+      "n_observations": 663,
+      "parameters": {
+        "damping": 0.024624566167507935,
+        "lambda": 28.711236666478847,
+        "omega0": -0.31367164064397884
+      },
+      "metrics": {
+        "angular_span": 0.6749181096989729,
+        "fit_seconds": 1.6160729,
+        "mae": 3.196913232122214,
+        "n": 663,
+        "normalized_rmse": 0.004854447288247539,
+        "pivot_adjustment": 0.0,
+        "quality": "good",
+        "radial_mad": 1.1650940817972923,
+        "refinement_iterations": 19,
+        "rmse": 4.003704059538439,
+        "rmse_x": 3.3589676867430223,
+        "rmse_y": 2.1787570483605587,
+        "robust_cost": 5.440298748377842,
+        "search_generations": 220
+      },
+      "contact_timing": null,
+      "artifacts": {
+        "tracking": "results/cases/pendulum_recorded/tracking.json",
+        "reconstruction": "results/cases/pendulum_recorded/reconstruction.json",
+        "plot": "results/cases/pendulum_recorded/reconstruction_preview.png",
+        "overlay": "results/cases/pendulum_recorded/overlay.mp4",
+        "gif": "docs/demo/pendulum_recorded_overlay.gif",
+        "still": "docs/demo/pendulum_recorded_overlay.png"
+      },
+      "tracking_runtime": {
+        "device": "NVIDIA GeForce RTX 4080 SUPER",
+        "n_frames": 663,
+        "skipped_empty_masks": 0,
+        "end_to_end_seconds": 43.27413499998511,
+        "end_to_end_fps": 15.320930158401275,
+        "timing_includes": "model_load,init_state,jpeg_decode,propagate",
+        "point": [
+          111.0,
+          858.0
+        ],
+        "pivot": [
+          385.0,
+          92.0
         ]
       }
     }

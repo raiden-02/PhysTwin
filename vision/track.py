@@ -196,11 +196,17 @@ def track(
     viz: Path | None,
     keep_frames: Path | None,
     on_progress: ProgressFn | None = None,
+    model: str = "projectile_bounce",
+    pivot: tuple[float, float] | None = None,
 ) -> dict:
     def emit(stage: str, **info: object) -> None:
         if on_progress is not None:
             on_progress(stage, info)
 
+    if model not in {"projectile_bounce", "pendulum"}:
+        raise ValueError(f"unknown dynamics model: {model}")
+    if model == "pendulum" and pivot is None:
+        raise ValueError("pendulum tracking requires a pivot x,y")
     require_cuda()
     fps, width, height, reported = read_video_meta(video)
     print(
@@ -286,11 +292,17 @@ def track(
         emit("writing_tracking", n=len(observations), skipped=skipped)
         payload = {
             "version": 1,
+            "model": model,
             "fps": fps,
             "frame_width": width,
             "frame_height": height,
             "observations": observations,
         }
+        if pivot is not None:
+            payload["reference"] = {
+                "pivot_x": pivot[0],
+                "pivot_y": pivot[1],
+            }
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
@@ -299,7 +311,9 @@ def track(
             json.dumps(
                 {
                     "video": str(video),
+                    "model": model,
                     "point": [point[0], point[1]],
+                    "pivot": None if pivot is None else [pivot[0], pivot[1]],
                     "n_frames": n_frames,
                     "skipped_empty_masks": skipped,
                     "end_to_end_seconds": elapsed,
@@ -336,6 +350,17 @@ def main() -> int:
         "--point",
         type=parse_point,
         help="initial click in pixel coordinates, x,y",
+    )
+    parser.add_argument(
+        "--model",
+        choices=("projectile_bounce", "pendulum"),
+        default="projectile_bounce",
+        help="dynamics model written to tracking.json",
+    )
+    parser.add_argument(
+        "--pivot",
+        type=parse_point,
+        help="fixed pivot x,y. Required for --model pendulum",
     )
     parser.add_argument("--output", default="results/tracking.json", help="tracking.json path")
     parser.add_argument(
@@ -374,6 +399,9 @@ def main() -> int:
         if args.point is None:
             print("error: --point x,y is required unless --dump-frame is set", file=sys.stderr)
             return 1
+        if args.model == "pendulum" and args.pivot is None:
+            print("error: --pivot x,y is required for --model pendulum", file=sys.stderr)
+            return 1
         viz = Path(args.viz) if args.viz else None
         keep = Path(args.keep_frames) if args.keep_frames else None
         track(
@@ -385,6 +413,8 @@ def main() -> int:
             max_frames=args.max_frames,
             viz=viz,
             keep_frames=keep,
+            model=args.model,
+            pivot=args.pivot,
         )
         return 0
     except Exception as exc:

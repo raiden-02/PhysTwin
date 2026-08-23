@@ -1,4 +1,11 @@
-import type { DynamicsModel, Job, ProgressEvent, Result, Sample } from "./types";
+import type {
+  AnchorMode,
+  DynamicsModel,
+  Job,
+  ProgressEvent,
+  Result,
+  Sample,
+} from "./types";
 
 async function parseError(response: Response): Promise<string> {
   try {
@@ -27,7 +34,7 @@ export async function createJobFromSample(
 ): Promise<Job> {
   const body = new FormData();
   body.append("sample_id", sampleId);
-    body.append("model", model);
+  body.append("model", model);
   const response = await fetch("/api/jobs", { method: "POST", body });
   if (!response.ok) throw new Error(await parseError(response));
   return response.json();
@@ -39,7 +46,7 @@ export async function createJobFromFile(
 ): Promise<Job> {
   const body = new FormData();
   body.append("file", file);
-    body.append("model", model);
+  body.append("model", model);
   const response = await fetch("/api/jobs", { method: "POST", body });
   if (!response.ok) throw new Error(await parseError(response));
   return response.json();
@@ -50,6 +57,7 @@ export async function runJob(
   x: number,
   y: number,
   pivot: { x: number; y: number } | null,
+  anchorMode: AnchorMode,
   groundY: number | null,
 ): Promise<Job> {
   const response = await fetch(`/api/jobs/${jobId}/run`, {
@@ -60,6 +68,7 @@ export async function runJob(
       y,
       pivot_x: pivot?.x ?? null,
       pivot_y: pivot?.y ?? null,
+      anchor_mode: anchorMode,
       ground_y: groundY,
     }),
   });

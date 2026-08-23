@@ -19,6 +19,19 @@ bool nearly_equal(double a, double b, double tol = 1e-9) {
     return std::abs(a - b) <= tol;
 }
 
+template <typename Function>
+void require_throws(Function&& function, const std::string& expected_text) {
+    try {
+        function();
+    } catch (const std::runtime_error& error) {
+        require(std::string(error.what()).find(expected_text) != std::string::npos,
+                "wrong failure text: " + std::string(error.what()));
+        return;
+    }
+    throw std::runtime_error("expected runtime_error containing: " +
+                             expected_text);
+}
+
 }  // namespace
 
 int main() {
@@ -69,7 +82,37 @@ int main() {
         require(nearly_equal(loaded_pendulum.pivot->x, 500.0), "pivot x");
         require(nearly_equal(loaded_pendulum.pivot->y, 100.0), "pivot y");
         std::filesystem::remove(path);
+
+        phystwin::Trajectory tracked = pendulum;
+        tracked.anchor_mode = phystwin::AnchorMode::tracked;
+        tracked.anchor_track_coverage = 0.92;
+        tracked.observations.clear();
+        tracked.anchor_observations.clear();
+        for (int frame = 0; frame < 12; ++frame) {
+            const double t = static_cast<double>(frame) / 60.0;
+            tracked.observations.push_back(
+                {.frame = frame, .t = t, .x = 520.0 + frame, .y = 300.0});
+            tracked.anchor_observations.push_back(
+                {.frame = frame, .t = t, .x = 500.0 + frame, .y = 100.0});
+        }
+        phystwin::save_tracking(tracked, path);
+        const phystwin::Trajectory loaded_tracked =
+            phystwin::load_tracking(path);
+        require(loaded_tracked.anchor_mode == phystwin::AnchorMode::tracked,
+                "tracked anchor mode");
+        require(loaded_tracked.anchor_observations.size() == 12,
+                "anchor observation count");
+        require(loaded_tracked.anchor_track_coverage.has_value(),
+                "anchor coverage present");
+        require(nearly_equal(*loaded_tracked.anchor_track_coverage, 0.92),
+                "anchor coverage");
+
+        tracked.anchor_observations[4].frame = 5;
+        phystwin::save_tracking(tracked, path);
+        require_throws(
+            [&] { (void)phystwin::load_tracking(path); }, "frame-aligned");
         std::cout << "io_roundtrip: ok\n";
+        std::filesystem::remove(path);
         return 0;
     } catch (const std::exception& ex) {
         std::cerr << "io_roundtrip failed: " << ex.what() << "\n";

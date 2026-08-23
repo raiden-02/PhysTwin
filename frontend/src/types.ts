@@ -1,4 +1,5 @@
 export type DynamicsModel = "projectile_bounce" | "pendulum";
+export type AnchorMode = "fixed" | "tracked";
 
 export type Sample = {
   id: string;
@@ -27,6 +28,7 @@ export type Job = {
   n_frames: number;
   point: [number, number] | null;
   pivot: [number, number] | null;
+  anchor_mode: AnchorMode;
   quality: string | null;
   fit_exit: number | null;
   error: string | null;
@@ -89,6 +91,8 @@ export type PendulumReconstruction = {
     radius: number;
     theta0: number;
     integration_step: number;
+    reference_mode: AnchorMode;
+    anchor_path: Point[];
   };
   units: {
     position: string;
@@ -103,6 +107,7 @@ export type PendulumReconstruction = {
     radial_mad: number;
     angular_span: number;
     pivot_adjustment: number;
+    anchor_track_coverage: number;
   };
   simulated: Point[];
 };
@@ -115,7 +120,13 @@ export type Tracking = {
   fps: number;
   frame_width: number;
   frame_height: number;
-  reference?: { pivot_x: number; pivot_y: number };
+  reference?: {
+    mode?: AnchorMode;
+    pivot_x: number;
+    pivot_y: number;
+    coverage?: number;
+  };
+  anchor_observations?: Point[];
   observations: Point[];
 };
 
@@ -123,6 +134,8 @@ export type Timing = {
   device?: string;
   n_frames?: number;
   skipped_empty_masks?: number;
+  skipped_anchor_masks?: number;
+  anchor_coverage?: number;
   end_to_end_seconds?: number;
   end_to_end_fps?: number;
   timing_includes?: string;

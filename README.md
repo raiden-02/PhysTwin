@@ -7,7 +7,7 @@ PhysTwin tracks one object in a short video, fits a selected dynamics model in C
 Implemented model families:
 
 - **Projectile / Bounce:** initial velocity, image-space gravity, ground collision, and restitution.
-- **Swing / Pendulum:** full nonlinear damped motion, fixed pivot, image-space radius, initial angular velocity, effective `g/L`, and damping.
+- **Swing / Pendulum:** full nonlinear damped motion, fixed or tracked anchor, image-space radius, initial angular velocity, effective `g/L`, and damping.
 
 The Three.js scene uses positions from C++ reconstruction output. It does not run a second physics model in the browser.
 
@@ -34,6 +34,7 @@ Evidence classes are kept separate:
 
 - **Recorded:** real camera footage.
 - **Rendered:** generated or CGI video passed through the full SAM 2 and C++ pipeline.
+- **Cinematic stress:** copyrighted movie footage used only to measure model mismatch.
 - **Synthetic:** direct known-parameter C++ validation without video.
 
 Current measured results are saved in [docs/evaluation.json](docs/evaluation.json).
@@ -53,7 +54,8 @@ Current measured results are saved in [docs/evaluation.json](docs/evaluation.jso
 - Deterministic noise and three outliers: `2.63 px RMSE`.
 - Noisy `lambda`: `7.19915` for known `7.2`.
 - Noisy damping: `0.217734` for known `0.22`.
-- Five failure checks cover too few observations, stationary motion, near-zero radius, inconsistent pivot geometry, and invalid timestamps.
+- Shared camera translation with a tracked anchor: `2.49e-11 px RMSE`, with `lambda=7.2` recovered exactly at the printed precision.
+- Eight failure checks cover too few observations, stationary motion, near-zero radius, inconsistent pivot geometry, invalid timestamps, misaligned anchors, low anchor coverage, and changing relative radius.
 - A fast-motion regression case recovers `lambda=32.0` at `5.84e-12 px RMSE` and protects the period-derived search bound.
 
 ### Recorded physical pendulum
@@ -68,6 +70,18 @@ The fixed-camera physical pendulum is 663 frames at 30 fps after trimming the fi
 - `3.36 px` horizontal RMSE and `2.18 px` vertical RMSE.
 - Fitted `lambda=28.711 s⁻²`, damping `0.0246 s⁻¹`, and initial angular velocity `-0.314 rad/s`.
 - Target-to-pivot radial MAD: `1.17 px`.
+
+### Cinematic swing stress case
+
+The user-provided *The Amazing Spider-Man* segment from `203.00 s` to `206.00 s` (`3:23` to `3:26`) is 90 frames at 29.97 fps. It is not a real-world correctness claim.
+
+- SAM 2 kept both Spider-Man and the lower red crane beacon in 68 of 90 frames. The last ~22 frames (dive / blur) lost both masks.
+- All 68 valid-target frames had a paired anchor. C++ reports 100% coverage among those frames. Clip-level coverage is 68/90.
+- Frame 0 clicks: target `820,420`, anchor `1115,663`.
+- Tracked-anchor result: `33.54 px RMSE`, `fair`.
+- Fixed-pivot baseline on the same 68 frames: `123.02 px RMSE`, `poor`.
+
+On this interval, subtracting shared image-space anchor translation beats a frozen click. That is still not a physical measurement. First-frame SAM masks bloated onto sky and buildings, the camera still rotates, perspective changes, and Spider-Man moves his body. The fitted cinematic parameters are not physical measurements.
 
 ## Local UI
 
@@ -89,10 +103,11 @@ For projectile motion:
 For pendulum motion:
 
 1. Choose **Swing / Pendulum**.
-2. Upload a fixed-camera clip.
+2. Pick a sample or upload a clip.
 3. Click the bob.
-4. Click the fixed pivot.
-5. Run, then inspect the pivot, rod, reconstructed bob, trajectories, parameters, and fit warning.
+4. Keep **Fixed pivot**, or choose **Track anchor through clip** when the physical attachment point stays visible and moves in frame.
+5. Click the pivot or anchor.
+6. Run, then inspect the moving reference, rod, reconstructed bob, trajectories, parameters, coverage, and fit warning.
 
 `scripts\serve-ui.ps1 -Dev` runs Vite at http://127.0.0.1:5173 and proxies `/api` to the same FastAPI process.
 
@@ -135,7 +150,7 @@ Pendulum fitting uses:
 theta'' = -lambda * sin(theta) - damping * theta'
 ```
 
-The fitter uses actual observation timestamps. It derives angle from target-to-pivot geometry, unwraps the angle series, estimates radius with medians, allows a bounded pivot refinement, and fits initial angular velocity, effective `lambda = g/L`, and non-negative damping. The observed zero-crossing period seeds and bounds the `lambda` search. A Huber objective limits the effect of a few bad observations.
+The fitter uses actual observation timestamps. Fixed mode derives angle from the target and one pivot. Tracked mode derives it from `target(t) - anchor(t)` and reconstructs absolute positions by adding the measured anchor path back. Fixed mode allows bounded pivot refinement. Tracked mode does not. Both modes estimate radius with medians and fit initial angular velocity, effective `lambda = g/L`, and non-negative damping. The observed zero-crossing period seeds and bounds the `lambda` search. A Huber objective limits the effect of a few bad observations.
 
 Pendulum quality is RMSE divided by fitted image-space radius. `good` is at most 5%, `fair` is at most 15%, otherwise `poor`.
 
@@ -143,7 +158,7 @@ Both solvers are deterministic. `poor` still writes reconstruction JSON for diag
 
 ## GPU video tracking
 
-`vision/track.py` loads official SAM 2.1 tiny on CUDA, takes one click on frame 0, propagates the mask, and writes mask-derived centroids. If the video has no valid fps metadata, tracking fails instead of assuming 30 fps.
+`vision/track.py` loads official SAM 2.1 tiny on CUDA. It propagates one target mask and, in tracked-anchor mode, one anchor mask in the same predictor pass. Anchor rows are paired with target rows by frame. The frame-0 click offset from the anchor mask centroid is preserved. Missing anchor masks reduce reported coverage instead of creating points. If the video has no valid fps metadata, tracking fails instead of assuming 30 fps.
 
 Device on these runs: **NVIDIA GeForce RTX 4080 SUPER**, torch `2.13.0+cu126`. Model: SAM 2.1 Hiera tiny. The recorded pendulum tracked 663 of 663 frames in `43.27 s` end-to-end.
 
@@ -153,14 +168,15 @@ Tracking FPS in the table is **end-to-end**: model load, JPEG decode, SAM 2 init
 
 ## Evaluation
 
-Seven cases live in [docs/evaluation.json](docs/evaluation.json):
+Nine cases live in [docs/evaluation.json](docs/evaluation.json):
 
 - recorded projectile;
 - explicit projectile poor fit;
 - two rendered projectile controls;
 - projectile synthetic recovery;
 - pendulum synthetic and noisy/outlier recovery;
-- recorded physical pendulum.
+- recorded physical pendulum;
+- fixed and tracked-anchor cinematic stress results.
 
 Re-run with:
 
@@ -168,11 +184,12 @@ Re-run with:
 powershell -ExecutionPolicy Bypass -File .\scripts\run-eval.ps1
 ```
 
-The script requires `samples\bounce.mp4`. If `samples\recorded\pendulum.mp4` exists, it also evaluates that clip with the supplied pendulum point and pivot:
+The script requires `samples\bounce.mp4`. It also evaluates the physical pendulum and local cinematic sample when those files exist:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\run-eval.ps1 `
-  -PendulumPoint "111,858" -PendulumPivot "385,92"
+  -PendulumPoint "111,858" -PendulumPivot "385,92" `
+  -CinematicPoint "820,420" -CinematicAnchor "1115,663"
 ```
 
 Bounce timing is a high-y local-max heuristic paired within 8 frames. It is an evaluation check, not part of the optimizer.
@@ -234,6 +251,15 @@ Pendulum CLI path:
 
 The current recorded clip exits 0 with quality `good` and `4.00 px RMSE`.
 
+Tracked-anchor CLI path:
+
+```powershell
+.\.venv\Scripts\python.exe vision\track.py samples\cinematic\spiderman_swing.mp4 `
+  --model pendulum --anchor-mode tracked `
+  --point 820,420 --pivot 1115,663 `
+  --output results\cases\pendulum_cinematic\tracking_tracked.json
+```
+
 CMake without the helper, after putting VS CMake on the current session PATH:
 
 ```powershell
@@ -247,7 +273,8 @@ ctest --test-dir build -C Release --output-on-failure
 ## Limitations
 
 - All motion and fitted scales are image-space. There is no metric calibration, physical length, or metric gravity recovery.
-- Pendulum assumes a fixed camera, fixed pivot, one bob, planar motion, and one uninterrupted interval.
+- Pendulum assumes one bob, planar image-space motion, a nearly constant apparent radius, and one uninterrupted interval.
+- Tracked-anchor mode compensates shared anchor translation only. It does not compensate camera rotation, zoom, perspective, changing cable length, or active body motion.
 - Projectile assumes one point mass and one horizontal ground line. It does not model spin, drag, friction, or wall collisions.
 - SAM 2's optional CUDA hole-filling extension is unavailable. PyTorch inference still runs on the GPU.
 - The UI binds localhost only and runs one GPU job at a time.

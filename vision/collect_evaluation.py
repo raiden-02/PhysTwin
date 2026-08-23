@@ -82,6 +82,8 @@ def _parse_pendulum_synthetic_stdout(text: str) -> dict:
             }
     patterns = {
         "rmse_px": r"^RMSE:\s+([-\d.eE+]+)",
+        "moving_camera_rmse_px": r"^moving-camera RMSE:\s+([-\d.eE+]+)",
+        "moving_camera_lambda": r"^moving-camera lambda:\s+([-\d.eE+]+)",
         "noisy_outlier_rmse_px": r"^noisy/outlier RMSE:\s+([-\d.eE+]+)",
         "noisy_lambda": r"^noisy lambda:\s+([-\d.eE+]+)",
         "noisy_damping": r"^noisy damping:\s+([-\d.eE+]+)",
@@ -131,6 +133,8 @@ def _video_case(item: dict) -> dict:
         "frame_width": tracking["frame_width"],
         "frame_height": tracking["frame_height"],
         "n_observations": len(tracking["observations"]),
+        "anchor_mode": tracking.get("reference", {}).get("mode", "fixed"),
+        "anchor_observations": len(tracking.get("anchor_observations", [])),
         "parameters": parameters,
         "metrics": metrics,
         "contact_timing": timing,
@@ -146,7 +150,7 @@ def _video_case(item: dict) -> dict:
     if raw:
         seconds = raw.get("end_to_end_seconds", raw.get("inference_seconds"))
         fps_rate = raw.get("end_to_end_fps", raw.get("inference_fps"))
-        result["tracking_runtime"] = {
+        runtime = {
             "device": raw.get("device"),
             "n_frames": raw.get("n_frames"),
             "skipped_empty_masks": raw.get("skipped_empty_masks"),
@@ -158,6 +162,15 @@ def _video_case(item: dict) -> dict:
             "point": raw.get("point"),
             "pivot": raw.get("pivot"),
         }
+        for key in (
+            "skipped_anchor_masks",
+            "anchor_valid_masks",
+            "paired_frames",
+            "anchor_coverage",
+        ):
+            if key in raw:
+                runtime[key] = raw[key]
+        result["tracking_runtime"] = runtime
     return result
 
 

@@ -58,8 +58,8 @@ Python owns the ML worker and the localhost adapter:
 
 - load SAM 2 / PyTorch
 - accept a target click on frame 0
-- accept a fixed pivot click for pendulum mode
-- propagate the mask through the clip on the local RTX 4080
+- accept a fixed pivot or tracked-anchor click for pendulum mode
+- propagate the target and optional anchor masks through the clip on the local RTX 4080
 - emit `tracking.json`
 - `vision/serve.py` runs those steps and `phystwin.exe` for the browser
 
@@ -76,9 +76,17 @@ TypeScript, React, and Three.js own the product loop: model choice, upload, sele
   "fps": 60.0,
   "frame_width": 1920,
   "frame_height": 1080,
-  "reference": {"pivot_x": 960.0, "pivot_y": 120.0},
+  "reference": {
+    "mode": "tracked",
+    "pivot_x": 960.0,
+    "pivot_y": 120.0,
+    "coverage": 0.95
+  },
   "observations": [
     {"frame": 0, "t": 0.0, "x": 531.2, "y": 312.7}
+  ],
+  "anchor_observations": [
+    {"frame": 0, "t": 0.0, "x": 960.0, "y": 120.0}
   ]
 }
 ```
@@ -91,6 +99,9 @@ Required:
 - each observation has `frame`, `t`, `x`, `y`
 - `model` is `projectile_bounce` or `pendulum`. Missing means `projectile_bounce` for backward compatibility
 - pendulum input requires `reference.pivot_x` and `reference.pivot_y`
+- `reference.mode` is `fixed` by default for backward compatibility
+- tracked mode requires at least 12 `anchor_observations`, one per target row with matching `frame` and `t`
+- tracked coverage must be at least 60%
 
 Optional on each observation:
 
@@ -154,7 +165,11 @@ Pendulum output uses the same `simulated` point array with model-specific fields
     "pivot_y": 170.0,
     "radius": 220.0,
     "theta0": 0.9,
-    "integration_step": 0.004167
+    "integration_step": 0.004167,
+    "reference_mode": "tracked",
+    "anchor_path": [
+      {"frame": 0, "t": 0.0, "x": 400.0, "y": 170.0}
+    ]
   },
   "metrics": {
     "rmse": 0.0,
@@ -163,6 +178,7 @@ Pendulum output uses the same `simulated` point array with model-specific fields
     "radial_mad": 0.0,
     "angular_span": 1.8,
     "pivot_adjustment": 0.0,
+    "anchor_track_coverage": 0.95,
     "quality": "good"
   },
   "simulated": [
@@ -228,10 +244,11 @@ Why this integrator: it is deterministic, matches frame-rate sampling, and is ea
 
 ### Swing / Pendulum
 
-The image-space angle is measured from the downward vertical:
+The image-space angle is measured from the downward vertical. Fixed mode uses one pivot. Tracked mode uses the paired anchor point at each timestamp:
 
 ```text
 theta = atan2(target_x - pivot_x, target_y - pivot_y)
+theta(t) = atan2(target_x(t) - anchor_x(t), target_y(t) - anchor_y(t))
 ```
 
 The simulator integrates:
@@ -245,9 +262,12 @@ It uses RK4 with a bounded internal step and samples the result at the actual ob
 ```text
 x = pivot_x + radius * sin(theta)
 y = pivot_y + radius * cos(theta)
+
+x(t) = anchor_x(t) + radius * sin(theta(t))
+y(t) = anchor_y(t) + radius * cos(theta(t))
 ```
 
-The radius is the median target-to-pivot distance. A deterministic bounded search may adjust the clicked pivot by a small amount if that improves radial consistency.
+The radius is the median target-to-reference distance. Fixed mode may adjust the clicked pivot by a small deterministic bound if that improves radial consistency. Tracked mode uses the measured anchor path without geometry refinement.
 
 ## System identification
 
@@ -271,7 +291,7 @@ An explicit ground is `poor` if observed centroids cross it by more than 5 px or
 
 The differential-evolution generation count is a **fixed budget of 160**, not an adaptive stopping time. Coordinate refinement then halves a 0.05 step until it is below `1e-8`. On the measured cases that loop accepts no improvement after DE, so the printed `refinement_iterations` value is a safety-net cost, not evidence of extra convergence.
 
-The pendulum fitter derives and unwraps the observed angle series. It rejects fewer than 12 observations, duration below 0.25 seconds, radius below 5 px, insufficient angular span, non-increasing timestamps, and inconsistent target-to-pivot radius.
+The pendulum fitter derives and unwraps the observed angle series. It rejects fewer than 12 observations, duration below 0.25 seconds, radius below 5 px, insufficient angular span, non-increasing timestamps, and inconsistent target-to-reference radius. Tracked mode also rejects missing or misaligned anchor rows and coverage below 60%.
 
 It fits `(omega0, lambda, damping)` with a fixed-seed 220-generation bounded differential search followed by deterministic coordinate refinement. Same-direction zero crossings provide a measured period that seeds and bounds the `lambda` search. This prevents a fast real pendulum from being clipped by an arbitrary low upper bound. The objective applies a Huber loss to tangential position error, so a few noisy SAM centroids do not dominate. Final RMSE still uses the raw observed and simulated Cartesian positions.
 
@@ -293,13 +313,15 @@ phystwin fit tracking.json --output reconstruction.json
 python vision/track.py input.mp4 --point 531,312 --output tracking.json
 python vision/track.py pendulum.mp4 --model pendulum \
   --point 111,858 --pivot 385,92 --output tracking.json
+python vision/track.py cinematic.mp4 --model pendulum --anchor-mode tracked \
+  --point 820,420 --pivot 1115,663 --output tracking.json
 ```
 
 - `inspect` loads the contract and prints a summary
 - `fit` dispatches from `tracking.json.model`, writes reconstruction JSON, and prints quality
 - `fit --ground-y PIXELS` overrides the default maximum-centroid ground estimate
 - poor fits write diagnostic output and exit with code 2
-- `vision/track.py` runs SAM 2 on CUDA and writes `tracking.json`
+- `vision/track.py` runs SAM 2 on CUDA and writes target plus optional frame-paired anchor observations
 - `vision/track.py` fails if the video has no valid fps metadata. It does not assume 30 fps
 - tracking timing is **end-to-end** (model load, JPEG decode, init, propagation)
 - empty masks are omitted from `observations` and recorded in `tracking_raw.json`
@@ -322,18 +344,18 @@ SAM 2.1 tiny weights download to `checkpoints/sam2.1_hiera_tiny.pt` on first run
 
 | Target | Coverage |
 |---|---|
-| `io_roundtrip` | write/load `tracking.json`, assert fields and identical-trajectory RMSE |
+| `io_roundtrip` | write/load fixed and tracked-anchor `tracking.json`, assert alignment and identical-trajectory RMSE |
 | `synthetic_fit` | generate 241 frames with two ground contacts, recover known `vx0, vy0, g, e`, enforce explicit tolerances, and reject a perturbed negative control |
 | `dropped_frame` | drop a contiguous interior gap from a synthetic trajectory, assert the simulator samples the remaining timestamps, and recover the same parameters |
-| `pendulum_fit` | recover standard and fast nonlinear pendulum parameters, test deterministic noise/outliers, and reject five degenerate inputs |
-| `vision/test_trajectory.py` | CPU mask centroid/bbox extraction |
+| `pendulum_fit` | recover fixed, fast, and moving-camera tracked-anchor motion, test deterministic noise/outliers, and reject eight degenerate inputs |
+| `vision/test_trajectory.py` | CPU mask geometry, frame pairing, click-offset preservation, and missing frame-0 anchor rejection |
 | `vision/test_serve.py` | UI server can find `phystwin.exe` and list Mixkit when present |
 
 ## Out of scope
 
 - Ceres
 - physical-scale calibration
-- camera-motion compensation
+- camera rotation, zoom, perspective, or general camera-motion compensation
 - depth or 3D camera-space reconstruction
 - automatic model discovery
 - bungee, spring, or general rigid-body dynamics

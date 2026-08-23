@@ -13,6 +13,7 @@ import { imageClick, STAGE_LABELS, STAGE_ORDER } from "./geom";
 import { ReconstructionScene } from "./Scene";
 import { TrajectoryPlot } from "./Trajectory";
 import type {
+  AnchorMode,
   DynamicsModel,
   Job,
   ProgressEvent,
@@ -44,6 +45,7 @@ export function App() {
   const [samples, setSamples] = useState<Sample[]>([]);
   const [job, setJob] = useState<Job | null>(null);
   const [model, setModel] = useState<DynamicsModel>("projectile_bounce");
+  const [anchorMode, setAnchorMode] = useState<AnchorMode>("fixed");
   const [click, setClick] = useState<{ x: number; y: number } | null>(null);
   const [pivot, setPivot] = useState<{ x: number; y: number } | null>(null);
   const [groundText, setGroundText] = useState("");
@@ -98,6 +100,7 @@ export function App() {
     setProgress(null);
     setClick(null);
     setPivot(null);
+    setAnchorMode("fixed");
   }
 
   async function onSample(sampleId: string) {
@@ -154,7 +157,7 @@ export function App() {
     }
     setBusy(true);
     try {
-      setJob(await runJob(job.id, click.x, click.y, pivot, groundY));
+      setJob(await runJob(job.id, click.x, click.y, pivot, anchorMode, groundY));
       setProgress({ stage: "queued", detail: "starting local SAM 2 + phystwin fit" });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -209,6 +212,9 @@ export function App() {
             {job.width}×{job.height} · {fmt(job.fps, 2)} fps · {job.n_frames} frames
             {job.kind === "rendered" ? " · rendered check, not real-footage accuracy" : ""}
             {job.kind === "recorded" ? " · recorded footage" : ""}
+            {job.kind === "cinematic"
+              ? " · cinematic stress footage, not physical validation"
+              : ""}
           </span>
           <button
             type="button"
@@ -245,7 +251,7 @@ export function App() {
                 onChange={() => setModel("pendulum")}
               />
               <strong>Swing / Pendulum</strong>
-              <span>Fixed pivot, nonlinear swing, effective g/L, damping</span>
+              <span>Fixed or tracked anchor, nonlinear swing, effective g/L, damping</span>
             </label>
           </div>
           <h2>Video</h2>
@@ -314,19 +320,56 @@ export function App() {
                 ? click
                   ? pivot
                     ? "Ready to track and fit"
-                    : "Now click the fixed pivot"
+                    : anchorMode === "tracked"
+                      ? "Now click the moving anchor"
+                      : "Now click the fixed pivot"
                   : "First click the moving bob"
                 : "Click the object on frame 0"}
             </h2>
             <p className="hint">{job.hint}</p>
+            {model === "pendulum" ? (
+              <fieldset className="anchor-choice">
+                <legend>Anchor reference</legend>
+                <label>
+                  <input
+                    type="radio"
+                    name="anchor-mode"
+                    checked={anchorMode === "fixed"}
+                    onChange={() => setAnchorMode("fixed")}
+                  />
+                  <span>
+                    <strong>Fixed pivot</strong>
+                    <small>Default for a locked camera and stationary pivot.</small>
+                  </span>
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="anchor-mode"
+                    checked={anchorMode === "tracked"}
+                    onChange={() => setAnchorMode("tracked")}
+                  />
+                  <span>
+                    <strong>Track anchor through clip</strong>
+                    <small>
+                      Use only when the physical attachment point stays visible and moves in
+                      frame.
+                    </small>
+                  </span>
+                </label>
+              </fieldset>
+            ) : null}
             <p className="coords">
               {click
                 ? `target ${fmt(click.x, 1)}, ${fmt(click.y, 1)} px`
                 : "target not selected"}
               {model === "pendulum" &&
                 (pivot
-                  ? ` · pivot ${fmt(pivot.x, 1)}, ${fmt(pivot.y, 1)} px`
-                  : " · pivot not selected")}
+                  ? ` · ${anchorMode === "tracked" ? "anchor" : "pivot"} ${fmt(
+                      pivot.x,
+                      1,
+                    )}, ${fmt(pivot.y, 1)} px`
+                  : ` · ${anchorMode === "tracked" ? "anchor" : "pivot"} not selected`)}
             </p>
             {job.suggested_point ? (
               <button
@@ -577,6 +620,20 @@ export function App() {
                     <dd>
                       {fmt(result.reconstruction.metrics.pivot_adjustment, 2)} px
                     </dd>
+                    <dt>anchor reference</dt>
+                    <dd>{result.reconstruction.environment.reference_mode}</dd>
+                    {result.reconstruction.environment.reference_mode === "tracked" ? (
+                      <>
+                        <dt>anchor coverage</dt>
+                        <dd>
+                          {fmt(
+                            result.reconstruction.metrics.anchor_track_coverage * 100,
+                            1,
+                          )}
+                          %
+                        </dd>
+                      </>
+                    ) : null}
                     <dt>radial MAD</dt>
                     <dd>{fmt(result.reconstruction.metrics.radial_mad, 2)} px</dd>
                     <dt>angular span</dt>

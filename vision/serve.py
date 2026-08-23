@@ -77,6 +77,20 @@ SAMPLE_SPECS = [
         "suggested_point": [111.0, 858.0],
         "suggested_pivot": [385.0, 92.0],
     },
+    {
+        "id": "cinematic_swing",
+        "path": ROOT / "samples" / "cinematic" / "spiderman_swing.mp4",
+        "label": "Spider-Man crane swing (cinematic stress case)",
+        "kind": "cinematic",
+        "hint": (
+            "Approximate stress footage, not physical validation. Select target "
+            "820,420 and the lower red crane beacon at 1115,663. Tracked mode "
+            "holds 68 of 90 frames. Tracked RMSE is 33.54 px (fair); fixed-pivot "
+            "RMSE is 123.02 px (poor)."
+        ),
+        "suggested_point": [820.0, 420.0],
+        "suggested_pivot": [1115.0, 663.0],
+    },
 ]
 
 _jobs_lock = threading.Lock()
@@ -89,6 +103,7 @@ class RunBody(BaseModel):
     y: float
     pivot_x: float | None = None
     pivot_y: float | None = None
+    anchor_mode: Literal["fixed", "tracked"] = "fixed"
     ground_y: float | None = Field(default=None)
 
 
@@ -154,6 +169,7 @@ def _snapshot(job: dict) -> dict:
         "n_frames": job["n_frames"],
         "point": job["point"],
         "pivot": job["pivot"],
+        "anchor_mode": job["anchor_mode"],
         "quality": job["quality"],
         "fit_exit": job["fit_exit"],
         "error": job["error"],
@@ -216,6 +232,7 @@ def _prepare_job(
         "stage": "ready",
         "point": None,
         "pivot": None,
+        "anchor_mode": "fixed",
         "quality": None,
         "fit_exit": None,
         "error": None,
@@ -234,6 +251,7 @@ def _run_pipeline(
     x: float,
     y: float,
     pivot: tuple[float, float] | None,
+    anchor_mode: Literal["fixed", "tracked"],
     ground_y: float | None,
 ) -> None:
     tracking_path = job["dir"] / "tracking.json"
@@ -262,6 +280,7 @@ def _run_pipeline(
                 on_progress=on_progress,
                 model=job["model"],
                 pivot=pivot,
+                anchor_mode=anchor_mode,
             )
             _emit(job, "fitting", detail="phystwin fit")
             cmd = [str(exe), "fit", str(tracking_path), "--output", str(reconstruction_path)]
@@ -291,7 +310,7 @@ def _run_pipeline(
         _emit(job, "failed", error=str(exc))
 
 
-app = FastAPI(title="PhysTwin local UI", version="0.8.0")
+app = FastAPI(title="PhysTwin local UI", version="0.9.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -436,16 +455,21 @@ def run_job(job_id: str, body: RunBody) -> dict:
                     400, "ground y is only valid for Projectile / Bounce"
                 )
             pivot = (body.pivot_x, body.pivot_y)
+        elif body.anchor_mode != "fixed":
+            raise HTTPException(
+                400, "tracked anchor mode is only valid for Swing / Pendulum"
+            )
         job["status"] = "running"
         job["point"] = [body.x, body.y]
         job["pivot"] = None if pivot is None else [pivot[0], pivot[1]]
+        job["anchor_mode"] = body.anchor_mode
         job["error"] = None
         job["quality"] = None
         job["events"] = []
     _emit(job, "queued", detail="starting local SAM 2 + phystwin fit")
     thread = threading.Thread(
         target=_run_pipeline,
-        args=(job, body.x, body.y, pivot, body.ground_y),
+        args=(job, body.x, body.y, pivot, body.anchor_mode, body.ground_y),
         daemon=True,
     )
     thread.start()
@@ -501,6 +525,8 @@ def job_result(job_id: str) -> dict:
             "device": raw.get("device"),
             "n_frames": raw.get("n_frames"),
             "skipped_empty_masks": raw.get("skipped_empty_masks"),
+            "skipped_anchor_masks": raw.get("skipped_anchor_masks"),
+            "anchor_coverage": raw.get("anchor_coverage"),
             "end_to_end_seconds": raw.get("end_to_end_seconds"),
             "end_to_end_fps": raw.get("end_to_end_fps"),
             "timing_includes": raw.get("timing_includes"),

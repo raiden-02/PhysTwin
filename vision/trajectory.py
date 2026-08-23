@@ -69,3 +69,37 @@ def observation_from_geometry(
     if confidence is not None:
         obs["confidence"] = float(confidence)
     return obs
+
+
+def pair_target_and_anchor(
+    target_observations: list[dict[str, Any]],
+    anchor_observations: list[dict[str, Any]],
+    anchor_click: tuple[float, float],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], float]:
+    """Pair rows by frame and keep the clicked point's offset from the anchor mask."""
+    if not target_observations:
+        raise ValueError("target track is empty")
+    if not anchor_observations:
+        raise ValueError("anchor track is empty")
+
+    anchors_by_frame = {int(row["frame"]): row for row in anchor_observations}
+    first_anchor = anchors_by_frame.get(0)
+    if first_anchor is None:
+        raise ValueError("anchor mask is empty on frame 0")
+    offset_x = float(anchor_click[0]) - float(first_anchor["x"])
+    offset_y = float(anchor_click[1]) - float(first_anchor["y"])
+
+    paired_targets: list[dict[str, Any]] = []
+    paired_anchors: list[dict[str, Any]] = []
+    for target in target_observations:
+        anchor = anchors_by_frame.get(int(target["frame"]))
+        if anchor is None:
+            continue
+        adjusted = dict(anchor)
+        adjusted["x"] = float(anchor["x"]) + offset_x
+        adjusted["y"] = float(anchor["y"]) + offset_y
+        paired_targets.append(target)
+        paired_anchors.append(adjusted)
+
+    coverage = len(paired_targets) / len(target_observations)
+    return paired_targets, paired_anchors, coverage

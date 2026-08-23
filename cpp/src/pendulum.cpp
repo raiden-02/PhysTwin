@@ -33,6 +33,17 @@ void validate(const PendulumParameters& parameters,
     if (environment.integration_step <= 0.0) {
         throw std::invalid_argument("pendulum integration step must be > 0");
     }
+    if (environment.anchor_mode == AnchorMode::tracked &&
+        environment.anchor_path.size() != times.size()) {
+        throw std::invalid_argument(
+            "tracked pendulum anchor path must match sample times");
+    }
+    for (const auto& anchor : environment.anchor_path) {
+        if (!std::isfinite(anchor.x) || !std::isfinite(anchor.y)) {
+            throw std::invalid_argument(
+                "tracked pendulum anchor path must be finite");
+        }
+    }
     double previous = 0.0;
     for (const double time : times) {
         if (!std::isfinite(time) || time < previous) {
@@ -104,16 +115,34 @@ Trajectory PendulumSimulator::run(const PendulumParameters& parameters,
     const std::vector<double> angles = run_angles(parameters, environment, times);
     Trajectory result;
     result.model = DynamicsModel::pendulum;
+    result.anchor_mode = environment.anchor_mode;
     result.pivot = ReferencePoint{environment.pivot_x, environment.pivot_y};
     result.fps = 1.0 / (4.0 * environment.integration_step);
     result.observations.reserve(times.size());
+    if (environment.anchor_mode == AnchorMode::tracked) {
+        result.anchor_observations.reserve(times.size());
+    }
     for (std::size_t i = 0; i < times.size(); ++i) {
+        const ReferencePoint anchor =
+            environment.anchor_mode == AnchorMode::tracked
+                ? environment.anchor_path[i]
+                : ReferencePoint{environment.pivot_x, environment.pivot_y};
+        const int frame =
+            static_cast<int>(std::llround(times[i] * result.fps));
         result.observations.push_back({
-            .frame = static_cast<int>(std::llround(times[i] * result.fps)),
+            .frame = frame,
             .t = times[i],
-            .x = environment.pivot_x + environment.radius * std::sin(angles[i]),
-            .y = environment.pivot_y + environment.radius * std::cos(angles[i]),
+            .x = anchor.x + environment.radius * std::sin(angles[i]),
+            .y = anchor.y + environment.radius * std::cos(angles[i]),
         });
+        if (environment.anchor_mode == AnchorMode::tracked) {
+            result.anchor_observations.push_back({
+                .frame = frame,
+                .t = times[i],
+                .x = anchor.x,
+                .y = anchor.y,
+            });
+        }
     }
     return result;
 }

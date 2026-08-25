@@ -112,6 +112,7 @@ def main() -> int:
     parser.add_argument("--panel-height", type=int, default=360)
     parser.add_argument("--gif-stride", type=int, default=3)
     parser.add_argument("--gif-max-width", type=int, default=960)
+    parser.add_argument("--gif-colors", type=int, default=64)
     parser.add_argument("--still-frame", type=int, default=-1)
     args = parser.parse_args()
 
@@ -213,10 +214,14 @@ def main() -> int:
         gif_path = Path(args.gif)
         gif_path.parent.mkdir(parents=True, exist_ok=True)
         duration_ms = int(round(1000.0 * args.gif_stride / fps))
-        gif_frames[0].save(
+        palette_frames = [
+            frame.convert("P", palette=Image.Palette.ADAPTIVE, colors=max(2, args.gif_colors))
+            for frame in gif_frames
+        ]
+        palette_frames[0].save(
             gif_path,
             save_all=True,
-            append_images=gif_frames[1:],
+            append_images=palette_frames[1:],
             duration=duration_ms,
             loop=0,
             optimize=True,

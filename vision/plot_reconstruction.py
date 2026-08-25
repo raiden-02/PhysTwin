@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import matplotlib
@@ -11,20 +12,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-
-def contact_frames(points: list[dict]) -> list[int]:
-    """Detect high-y local maxima for a simple bounce-timing check."""
-    y = [point["y"] for point in points]
-    threshold = max(y) - 0.12 * (max(y) - min(y))
-    contacts: list[int] = []
-    for index in range(3, len(y) - 3):
-        if y[index] != max(y[index - 3 : index + 4]) or y[index] < threshold:
-            continue
-        if not contacts or index - contacts[-1] >= 8:
-            contacts.append(index)
-        elif y[index] > y[contacts[-1]]:
-            contacts[-1] = index
-    return contacts
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from eval_metrics import contact_timing
 
 
 def main() -> int:
@@ -32,6 +21,7 @@ def main() -> int:
     parser.add_argument("tracking")
     parser.add_argument("reconstruction")
     parser.add_argument("--output", default="results/reconstruction_preview.png")
+    parser.add_argument("--title", default="")
     args = parser.parse_args()
 
     tracking = json.loads(Path(args.tracking).read_text(encoding="utf-8"))
@@ -75,7 +65,9 @@ def main() -> int:
     axes[2].plot(sim_x, sim_y, "--", label="simulated", linewidth=1.5)
     axes[2].invert_yaxis()
     axes[2].set_aspect("equal", adjustable="datalim")
+    heading = args.title + "\n" if args.title else ""
     axes[2].set_title(
+        f"{heading}"
         f"RMSE {metrics['rmse']:.2f} px ({metrics['quality']})\n"
         f"x={metrics['rmse_x']:.2f}, y={metrics['rmse_y']:.2f} px\n"
         f"g={parameters['g']:.2f} px/s², e={parameters['e']:.3f}"
@@ -91,21 +83,13 @@ def main() -> int:
     figure.savefig(output, dpi=130)
     plt.close(figure)
     print(f"wrote {output}")
-    observed_contacts = contact_frames(observed)
-    simulated_contacts = contact_frames(simulated)
-    paired = min(len(observed_contacts), len(simulated_contacts))
-    if paired:
-        errors = [
-            abs(observed_contacts[index] - simulated_contacts[index])
-            for index in range(paired)
-        ]
-        mean_frames = sum(errors) / paired
-        mean_ms = mean_frames * 1000.0 / float(tracking["fps"])
-        print(f"observed contact frames: {observed_contacts}")
-        print(f"simulated contact frames: {simulated_contacts}")
+    timing = contact_timing(tracking, reconstruction)
+    print(f"observed contact frames: {timing['observed_contact_frames']}")
+    print(f"simulated contact frames: {timing['simulated_contact_frames']}")
+    if timing.get("paired"):
         print(
-            f"mean contact timing error: {mean_frames:.2f} frames "
-            f"({mean_ms:.2f} ms)"
+            f"mean contact timing error: {timing['mean_error_frames']:.2f} frames "
+            f"({timing['mean_error_ms']:.2f} ms)"
         )
     return 0
 

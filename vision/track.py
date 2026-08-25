@@ -12,6 +12,7 @@ import shutil
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import cv2
@@ -79,7 +80,15 @@ def read_video_meta(video: Path) -> tuple[float, int, int, int]:
     return fps, width, height, count
 
 
-def extract_jpeg_frames(video: Path, frame_dir: Path, max_frames: int | None) -> int:
+ProgressFn = Callable[[str, dict], None]
+
+
+def extract_jpeg_frames(
+    video: Path,
+    frame_dir: Path,
+    max_frames: int | None,
+    on_progress: ProgressFn | None = None,
+) -> int:
     cap = cv2.VideoCapture(str(video))
     if not cap.isOpened():
         raise RuntimeError(f"failed to open video: {video}")
@@ -95,9 +104,13 @@ def extract_jpeg_frames(video: Path, frame_dir: Path, max_frames: int | None) ->
         if not cv2.imwrite(str(out), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95]):
             raise RuntimeError(f"failed to write {out}")
         written += 1
+        if on_progress and written % 30 == 0:
+            on_progress("extracting_frames", {"current": written})
     cap.release()
     if written == 0:
         raise RuntimeError(f"no frames decoded from {video}")
+    if on_progress:
+        on_progress("extracting_frames", {"current": written, "total": written})
     return written
 
 
@@ -182,13 +195,19 @@ def track(
     max_frames: int | None,
     viz: Path | None,
     keep_frames: Path | None,
+    on_progress: ProgressFn | None = None,
 ) -> dict:
+    def emit(stage: str, **info: object) -> None:
+        if on_progress is not None:
+            on_progress(stage, info)
+
     require_cuda()
     fps, width, height, reported = read_video_meta(video)
     print(
         f"video {video} fps={fps:.4f} size={width}x{height} reported_frames={reported}",
         file=sys.stderr,
     )
+    emit("reading_video", fps=fps, width=width, height=height, reported_frames=reported)
 
     checkpoint = download_checkpoint(checkpoint)
     from sam2.build_sam import build_sam2_video_predictor
@@ -199,12 +218,15 @@ def track(
         tmp_owned = tempfile.mkdtemp(prefix="phystwin_frames_")
         frame_dir = Path(tmp_owned)
     try:
-        n_frames = extract_jpeg_frames(video, frame_dir, max_frames)
+        emit("extracting_frames", current=0, total=reported if reported > 0 else None)
+        n_frames = extract_jpeg_frames(video, frame_dir, max_frames, on_progress)
         print(f"extracted {n_frames} jpeg frames to {frame_dir}", file=sys.stderr)
 
+        emit("loading_sam2")
         start = time.perf_counter()
         predictor = build_sam2_video_predictor(config, str(checkpoint), device="cuda")
         with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+            emit("initializing_tracker", total=n_frames)
             state = predictor.init_state(str(frame_dir))
             points = np.array([[point[0], point[1]]], dtype=np.float32)
             labels = np.array([1], dtype=np.int32)
@@ -219,6 +241,7 @@ def track(
             raw_rows: list[dict] = []
             observations: list[dict] = []
             skipped = 0
+            emit("tracking", current=0, total=n_frames)
             for frame_idx, _obj_ids, mask_logits in predictor.propagate_in_video(state):
                 logits = mask_logits[0].detach().float().cpu().numpy()
                 binary = np.squeeze(logits) > 0.0
@@ -234,10 +257,21 @@ def track(
                 )
                 if geometry is None:
                     skipped += 1
-                    continue
-                observations.append(
-                    observation_from_geometry(int(frame_idx), fps, geometry, conf)
-                )
+                else:
+                    observations.append(
+                        observation_from_geometry(int(frame_idx), fps, geometry, conf)
+                    )
+                if on_progress and (
+                    frame_idx == 0
+                    or (frame_idx + 1) % 5 == 0
+                    or frame_idx + 1 == n_frames
+                ):
+                    emit(
+                        "tracking",
+                        current=int(frame_idx) + 1,
+                        total=n_frames,
+                        skipped=skipped,
+                    )
         elapsed = time.perf_counter() - start
         infer_fps = n_frames / elapsed if elapsed > 0 else 0.0
         print(
@@ -249,6 +283,7 @@ def track(
         if not observations:
             raise RuntimeError("SAM 2 produced no valid masks. Try a different --point.")
 
+        emit("writing_tracking", n=len(observations), skipped=skipped)
         payload = {
             "version": 1,
             "fps": fps,

@@ -40,7 +40,7 @@ $pip = Join-Path $venv "Scripts\pip.exe"
 
 & $python -m pip install --upgrade pip
 & $pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
-& $pip install numpy opencv-python matplotlib tqdm pillow huggingface_hub
+& $pip install numpy opencv-python matplotlib tqdm pillow huggingface_hub fastapi uvicorn python-multipart
 
 $env:SAM2_BUILD_CUDA = "0"
 & $pip install --no-build-isolation "git+https://github.com/facebookresearch/sam2.git"

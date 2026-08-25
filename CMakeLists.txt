@@ -21,6 +21,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 add_library(phystwin_core
     cpp/src/io.cpp
     cpp/src/simulator.cpp
+    cpp/src/synthetic.cpp
     cpp/src/fitter.cpp
     cpp/src/metrics.cpp
 )

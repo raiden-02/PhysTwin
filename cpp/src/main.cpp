@@ -41,7 +41,7 @@ int fit(const std::filesystem::path& path, const std::filesystem::path&) {
     const phystwin::Trajectory traj = phystwin::load_tracking(path);
     std::cerr << "loaded " << traj.observations.size() << " observations from " << path.string()
               << "\n"
-              << "phystwin fit is not implemented yet (Checkpoint 1)\n";
+              << "phystwin fit is not connected to tracked input yet (Checkpoint 3)\n";
     return 2;
 }
 

@@ -2,7 +2,7 @@
 
 PhysTwin reconstructs a simple 2D physics motion from a short fixed-camera video of one moving object.
 
-This document is the Day-1 design. It matches `career-os/portfolio/phystwin.md`. Implementation follows the checkpoint order in that contract. Checkpoint 1 ships the deterministic simulator, synthetic generator, metrics, and parameter fitter. GPU tracking, real-trajectory fitting through the CLI, and demo work come later.
+This document is the Day-1 design. It matches `career-os/portfolio/phystwin.md`. Implementation follows the checkpoint order in that contract. Checkpoint 2 ships GPU SAM 2 tracking and `tracking.json`. Real-trajectory C++ fitting through the CLI and demo work come later.
 
 ## Pipeline
 
@@ -196,8 +196,8 @@ The choice must be justified from observed behavior, not from solver fashion.
 | Physics + synthetic tests | this repo | 1 | implemented, no extra dep |
 | Nonlinear least squares | deterministic bounded search | 1 | implemented in-repo because the collision residual is non-smooth |
 | Dense linear algebra | Eigen | later only if needed | skipped in Checkpoint 1 |
-| Video / masks | OpenCV via `opencv-python` | 2 | Python venv |
-| SAM 2 inference | PyTorch + SAM 2 + CUDA | 2 | Python 3.11 or 3.12 venv on the RTX 4080. System Python is currently 3.14 beta and is not trusted for PyTorch |
+| Video / masks | OpenCV via `opencv-python` | 2 | implemented in the 3.11 venv |
+| SAM 2 inference | PyTorch 2.13.0+cu126 + SAM 2.1 tiny | 2 | implemented on RTX 4080 SUPER. `SAM2_BUILD_CUDA=0` because `nvcc` is missing |
 | Plots | matplotlib or a tiny C++ dump + Python plot | 4 | after RMSE exists |
 | Interactive UI | React + TypeScript + Three.js | 4 optional | only if the CLI loop is already measured |
 
@@ -211,11 +211,21 @@ phystwin fit tracking.json --output reconstruction.json
 python vision/track.py input.mp4 --point 531,312 --output tracking.json
 ```
 
-Checkpoint 1:
+Checkpoint 2:
 
 - `inspect` loads the contract and prints a summary
 - `fit` remains a stub until Checkpoint 3 connects and validates real observations
-- `track.py` is a stub (non-zero exit)
+- `vision/track.py` runs SAM 2 on CUDA and writes `tracking.json`
+- `vision/check_cuda.py` prints the selected GPU
+- empty masks are omitted from `observations` and recorded in `tracking_raw.json`
+
+Create the venv once:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-vision.ps1
+```
+
+SAM 2.1 tiny weights download to `checkpoints/sam2.1_hiera_tiny.pt` on first run. That file is gitignored.
 
 ## Tests
 
@@ -223,11 +233,13 @@ Checkpoint 1:
 |---|---|
 | `io_roundtrip` | write/load `tracking.json`, assert fields and identical-trajectory RMSE |
 | `synthetic_fit` | generate 241 frames with two ground contacts, recover known `vx0, vy0, g, e`, enforce explicit tolerances, and reject a perturbed negative control |
+| `vision/test_trajectory.py` | CPU mask centroid/bbox extraction |
 
-## What is intentionally not in Checkpoint 1
+## What is intentionally not in Checkpoint 2
 
-- SAM 2 / GPU tracking
-- real-video ground estimation and CLI fitting
+- C++ fitting of a tracked real video through `phystwin fit`
 - robust loss, confidence weights, smoothing, or outlier rejection
-- plots, GIFs, frontend
+- plots beyond the tracking preview PNG, GIFs, frontend
 - Ceres, Eigen, or OpenCV C++ packages
+- SAM 2 CUDA post-process extension (`nvcc` not installed)
+- a phone-camera clip in git. The measured run used a generated bounce video

@@ -2,7 +2,7 @@
 
 PhysTwin turns a short real-world video into a small, quantitatively fitted physics reconstruction: select one moving object, track it on the GPU, infer the physical parameters that best reproduce its motion, and compare the recorded and simulated trajectories side by side.
 
-**Status:** Checkpoint 1 synthetic core. The C++20 project builds, simulates deterministic 2D bounce motion, recovers known synthetic parameters, and computes RMSE/MAE. SAM 2 tracking, real-video fitting through the CLI, and the demo are not implemented yet.
+**Status:** Checkpoint 2 GPU tracking. The C++20 synthetic core still passes. SAM 2 now tracks one clicked object on the RTX 4080 SUPER and writes `tracking.json`. Real-video C++ fitting and the demo UI are not implemented yet.
 
 [DEMO GIF / VIDEO: not recorded yet]
 
@@ -20,7 +20,7 @@ real video
   → real-vs-sim visualization + RMSE
 ```
 
-Shipped: project layout, C++ types, JSON inspect path, deterministic simulator, synthetic generator, unweighted least-squares fitter, RMSE/MAE, and Python worker stubs.
+Shipped: C++ synthetic core plus a Python SAM 2 worker that emits the `tracking.json` contract from a point prompt.
 
 ## Results
 
@@ -62,7 +62,27 @@ Implemented for deterministic synthetic trajectories. `vx0` uses scalar linear l
 
 ## GPU video tracking
 
-Not implemented. Checkpoint 2.
+Implemented. `vision/track.py` loads official SAM 2.1 tiny on CUDA, takes one click on frame 0, propagates the mask, and writes mask-derived centroids.
+
+Measured on 2026-08-25 against a 180-frame generated bounce clip (`samples/generated_bounce.mp4`, 640x360, 60 fps):
+
+```text
+device: NVIDIA GeForce RTX 4080 SUPER
+torch:  2.13.0+cu126
+model:  SAM 2.1 Hiera tiny
+tracked frames: 180/180 (0 empty masks)
+wall time: 11.35 s  (~15.9 FPS including JPEG load + propagation)
+first centroid: 81.98, 41.20 px
+last centroid:  500.06, 301.89 px
+```
+
+This clip is generated local footage used to prove the GPU loop. It is not a phone recording. Drop a real fixed-camera clip in `samples/` and rerun with `--dump-frame` then `--point`. Do not treat these numbers as real-world tracking accuracy.
+
+C++ inspect of the emitted file:
+
+```powershell
+.\build\Release\phystwin.exe inspect results\tracking.json
+```
 
 ## Evaluation
 
@@ -95,15 +115,24 @@ Inspect the sample contract file (this does not need `cmake` on PATH if `build\R
 .\build\Release\phystwin.exe inspect samples\example_tracking.json
 ```
 
-Python worker (stub, exits 2):
+Python worker (needs the 3.11 venv, not system 3.14):
 
 ```powershell
-python vision\track.py input.mp4 --point 531,312 --output tracking.json
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-vision.ps1
+.\.venv\Scripts\python.exe vision\check_cuda.py
+.\.venv\Scripts\python.exe vision\test_trajectory.py
+.\.venv\Scripts\python.exe vision\make_bounce_clip.py
+.\.venv\Scripts\python.exe vision\track.py samples\generated_bounce.mp4 --dump-frame results\frame0.png
+.\.venv\Scripts\python.exe vision\track.py samples\generated_bounce.mp4 --point 80,40 --output results\tracking.json
+.\build\Release\phystwin.exe inspect results\tracking.json
 ```
+
+Open `results\tracking_preview.png` and confirm the overlay follows the ball.
 
 ## Limitations
 
-- Synthetic core only. No real-video tracker or CLI reconstruction yet.
+- GPU tracking is proven on a generated bounce clip. A phone/real-camera clip has not been run yet.
+- SAM 2's optional CUDA hole-filling kernel is not built (`nvcc` is missing). Tracking still runs on GPU through PyTorch.
 - Monocular video has no metric scale. Later fits will report a gravity scale in px/s².
 - One object, fixed camera, one ground line, no spin, no drag in V1.
 - System Python on this machine is 3.14 beta. SAM 2 / PyTorch will need a 3.11 or 3.12 venv.

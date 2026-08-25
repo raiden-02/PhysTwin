@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "fps": 60.0,
+  "frame_width": 1920,
+  "frame_height": 1080,
+  "observations": [
+    {"frame": 0, "t": 0.0, "x": 531.2, "y": 312.7},
+    {"frame": 1, "t": 0.016667, "x": 534.1, "y": 306.8}
+  ]
+}

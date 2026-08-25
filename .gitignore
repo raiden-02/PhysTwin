@@ -1,0 +1,51 @@
+# Build
+/build/
+/out/
+/cmake-build-*/
+CMakeUserPresets.json
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+*.vcxproj.user
+.vs/
+out/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Models, caches, large media
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.engine
+.cache/
+__pycache__/
+samples/*.mp4
+samples/*.mov
+samples/*.avi
+samples/*.mkv
+samples/*.webm
+
+# Results generated locally (keep .gitkeep)
+results/*
+!results/.gitkeep
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+*.ilk
+*.pdb
+*.exp
+*.obj
+*.log

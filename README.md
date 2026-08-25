@@ -1,16 +1,29 @@
 # PhysTwin
 
-PhysTwin turns a short real-world video into a small, quantitatively fitted physics reconstruction: select one moving object, track it on the GPU, infer the physical parameters that best reproduce its motion, and compare the recorded and simulated trajectories side by side.
+PhysTwin turns a short fixed-camera video into a fitted physics reconstruction: select one moving object, track it on the GPU, infer the physical parameters that best reproduce its motion, and compare the recording with the reconstructed trajectory and measured error.
 
-**Status:** Checkpoint 4. The video → SAM 2 → C++ fit loop is measured on three clips. Observed-vs-simulated overlays and RMSE live below. There is no React or Three.js UI.
+**Status:** Checkpoint 6. Audited C++/SAM 2 core with honest recorded vs rendered vs synthetic labels. No React, Three.js, or Ceres.
 
-![Side-by-side overlay of tracked vs simulated bounce](docs/demo/diagonal_overlay.gif)
+![Recorded Mixkit tennis: observed vs simulated overlay](docs/demo/mixkit_overlay.gif)
 
-The GIF is the generated diagonal clip: left is SAM 2 centroids on the video, right is the C++ reconstruction. RMSE on this case is **0.42 px** (`good`).
+This is the **recorded** evidence. Mixkit [Tennis Ball Bouncing in Slow Motion](https://mixkit.co/free-stock-video/tennis-ball-bouncing-in-slow-motion-101289/), 281 frames at 24 fps, click `--point 375,722`. Left is SAM 2 centroids on the video. Right is the C++ reconstruction.
 
-![Observed vs simulated trajectories for three cases](docs/demo/observed_vs_simulated.png)
+```text
+RMSE            13.79 px   fair
+RMSE_x           8.40 px   9.30% of 90.3 px horizontal travel
+RMSE_y          10.94 px   1.57% of 695.6 px vertical travel
+bounce timing    1.00 frame (41.67 ms)
+g              173.15 px/s^2
+e                0.665
+track           19.96 s end-to-end (14.1 FPS including model load and decode)
+fit              0.019 s
+```
 
-Recorded Mixkit still: [docs/demo/mixkit_overlay.png](docs/demo/mixkit_overlay.png). Near-vertical drop GIF: [docs/demo/drop_overlay.gif](docs/demo/drop_overlay.gif). Raw numbers: [docs/evaluation.json](docs/evaluation.json).
+The `fair` grade is driven by the weak horizontal axis. Horizontal centroid travel (90 px) is smaller than the ball's mask radius (~184 px), so that axis is likely mask/centroid drift and perspective, not a measured lateral throw. The vertical bounce, which carries gravity and restitution, fits to 1.57% of its travel.
+
+![Observed vs simulated trajectories](docs/demo/observed_vs_simulated.png)
+
+The left column is the Mixkit recording. The middle and right columns are **rendered** clips that use the same integrator family as the fitter, then go through SAM 2. Their 0.42 px and 0.35 px RMSE values are pipeline checks, not real-footage accuracy. Animated pipeline overlays: [diagonal](docs/demo/diagonal_overlay.gif), [drop](docs/demo/drop_overlay.gif). Raw numbers: [docs/evaluation.json](docs/evaluation.json).
 
 ## What it does
 
@@ -27,40 +40,40 @@ Python owns tracking. C++ owns physics, fitting, and metrics. The languages talk
 
 ## Results
 
-Measured on 2026-08-25. Copied from `docs/evaluation.json`. Not invented.
+Measured 2026-08-25. Copied from `docs/evaluation.json`. Not invented.
 
-| Case | Kind | RMSE | Quality | Bounce timing | Track time |
-|---|---|---|---|---|---|
-| Mixkit tennis | recorded 281 frames, 24 fps | 13.79 px | fair | 1.00 frame (41.67 ms) | 19.96 s, 14.1 FPS |
-| Generated diagonal | SAM 2 on rendered clip | 0.42 px | good | 0.57 frame (9.52 ms) | 12.05 s, 14.9 FPS |
-| Generated drop | SAM 2 on rendered clip, `e=0.40` | 0.35 px | good | 1.56 frame (25.93 ms) | 11.71 s, 15.4 FPS |
-| C++ synthetic | noise-free 241 frames, not video | 9.01e-07 px | good | n/a | fit 0.017 s |
+**Recorded (external validity)**
 
-Mixkit clip: [Tennis Ball Bouncing in Slow Motion](https://mixkit.co/free-stock-video/tennis-ball-bouncing-in-slow-motion-101289/). Click `--point 375,722`. Fitted `vx0=-9.51 px/s`, `vy0=706.54 px/s`, `g=173.15 px/s^2`, `e=0.665`. Vertical bounce shape is close. Horizontal velocity is not constant in this close-up, so the grade is `fair`, not `good`.
+| Case | RMSE | Quality | Notes |
+|---|---|---|---|
+| Mixkit tennis, 281 frames, 24 fps | 13.79 px | fair | bounce 1.00 frame. Vertical 10.94 px / 1.57% of axis travel |
 
-Generated diagonal draw parameters vs SAM 2 + C++ fit:
+Fitted Mixkit parameters: `vx0=-9.51 px/s`, `vy0=706.54 px/s`, `g=173.15 px/s^2`, `e=0.665`. Gravity is an image-space scale, not `9.81 m/s^2`.
 
-```text
-                draw     fitted
-vx0 px/s        140      140.00
-vy0 px/s         20       20.77
-g px/s^2       1800     1795.65
-e               0.72      0.719
-```
+Saved failure case: same Mixkit tracking with `--ground-y 800` writes quality `poor`, ground violation 108.99 px, RMSE 54.72 px, and CLI exit code 2.
 
-Generated drop:
+**Rendered pipeline checks (same assumed integrator, then SAM 2)**
 
-```text
-                draw     fitted
-vx0 px/s          4        4.08
-vy0 px/s         50       49.74
-g px/s^2       1600     1600.06
-e               0.40      0.400
-```
+Do not quote these as real-footage accuracy.
 
-The generated files are rendered footage, then tracked with SAM 2 like a real video. They are not a substitute for a phone clip, but they do exercise the full JSON boundary. The C++ synthetic row is a noise-free fitter check. It is not tracking evidence.
+| Case | Draw θ | Fitted θ | RMSE | Quality |
+|---|---|---|---|---|
+| Generated diagonal | vx=140, vy=20, g=1800, e=0.72 | 140.00, 20.77, 1795.65, 0.719 | 0.42 px | good |
+| Generated drop | vx=4, vy=50, g=1600, e=0.40 | 4.08, 49.74, 1600.06, 0.400 | 0.35 px | good |
 
-All gravity values are image-space scales, not `9.81 m/s^2`.
+End-to-end tracking: diagonal 12.05 s (14.9 FPS), drop 11.71 s (15.4 FPS). Bounce heuristic: 0.57 frame and 1.56 frame. On the damped drop the detector also marks extra late simulated contacts. Trust RMSE first.
+
+**C++ synthetic (no video)**
+
+Noise-free 241-frame recovery: RMSE 9.01e-07 px. Parameter errors are at most 2.5e-06. Perturbed negative-control RMSE 65.75 px. Search uses a fixed 160-generation DE budget. Fit 0.018 s.
+
+## Resume wording
+
+Safe with the current evidence. Do not add Ceres or Three.js until they ship.
+
+> Built a C++20 video-to-simulation system that converts GPU-tracked object motion from recorded footage into a fitted image-space physics reconstruction, estimating initial velocity, gravity scale, and collision restitution through numerical system identification.
+
+> Integrated local PyTorch/SAM 2 video tracking on an NVIDIA RTX 4080 SUPER and evaluated reconstructed motion on one recorded Mixkit clip (13.79 px RMSE, 1.00 frame bounce timing, `fair`, with 1.57% vertical-axis error) plus rendered SAM 2 pipeline checks and a noise-free C++ synthetic recovery test.
 
 ## How it works
 
@@ -80,33 +93,39 @@ video + click
     → overlay_comparison.py        side-by-side video + GIF
 ```
 
-No gRPC, queues, or a web frontend in V1.
+No gRPC, queues, or a web frontend in this checkpoint.
 
 ## System identification
 
-`vx0` uses scalar linear least squares. A fixed-seed bounded search followed by coordinate refinement minimizes squared vertical residuals for `vy0`, `g`, and `e`. This derivative-free choice handles the hard collision clamp without adding Ceres.
+`vx0` uses scalar linear least squares. A fixed-seed bounded search (160 generations) followed by coordinate refinement minimizes squared vertical residuals for `vy0`, `g`, and `e`. Refinement is a step-halving safety net. On the measured cases it accepts no improvement after the search, so do not treat `refinement_iterations` as adaptive convergence.
+
+The hard collision clamp makes the objective non-smooth. This derivative-free path is the current solver. Ceres is not in the project.
 
 Fit quality is per-axis RMSE divided by travel on that axis. `good` is at most 5%, `fair` is at most 15%, otherwise `poor`. `fair` still writes the reconstruction and exits 0. `poor` exits 2.
 
+Default `y_ground` is the maximum observed centroid y, so `ground_violation` is zero unless `--ground-y` is set explicitly. The Mixkit `--ground-y 800` case is the saved demonstration of that path.
+
 ## GPU video tracking
 
-`vision/track.py` loads official SAM 2.1 tiny on CUDA, takes one click on frame 0, propagates the mask, and writes mask-derived centroids.
+`vision/track.py` loads official SAM 2.1 tiny on CUDA, takes one click on frame 0, propagates the mask, and writes mask-derived centroids. If the video has no valid fps metadata, tracking fails instead of assuming 30 fps.
 
 Device on these runs: **NVIDIA GeForce RTX 4080 SUPER**, torch `2.13.0+cu126`. Model: SAM 2.1 Hiera tiny. Empty-mask count was 0 on all three clips.
 
 `--point` is numeric `x,y`. Clicking a PNG in the editor only zooms the image.
 
+Tracking FPS in the table is **end-to-end**: model load, JPEG decode, SAM 2 init, and propagation.
+
 ## Evaluation
 
-Four recorded cases live in [docs/evaluation.json](docs/evaluation.json). Re-run them with:
+Five cases live in [docs/evaluation.json](docs/evaluation.json): one recorded clip, one recorded poor-fit, two rendered pipeline checks, and C++ synthetic recovery. Re-run with:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\run-eval.ps1
 ```
 
-That script generates the two rendered clips, tracks any missing cases, fits, writes overlays under `docs/demo/`, and refreshes `docs/evaluation.json`. Mixkit tracking is reused if `results\cases\mixkit_tennis\tracking.json` already exists.
+That script requires `samples\bounce.mp4`, tracks Mixkit into `results\cases\mixkit_tennis\`, writes the `--ground-y 800` failure case, and refreshes `docs\evaluation.json`.
 
-Bounce timing is a high-y local-max heuristic paired within 8 frames. It is an evaluation check, not part of the optimizer. On the damped drop, the detector also marks extra late simulated contacts. Trust RMSE first.
+Bounce timing is a high-y local-max heuristic paired within 8 frames. It is an evaluation check, not part of the optimizer.
 
 ## Build and run
 
@@ -118,17 +137,23 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup-vision.ps1
 .\.venv\Scripts\python.exe vision\check_cuda.py
 ```
 
+`scripts\build.ps1` already runs CTest. To re-run tests later from a regular PowerShell (CMake is not on PATH):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1
+```
+
 One Mixkit reconstruction (needs `samples\bounce.mp4` locally):
 
 ```powershell
 .\.venv\Scripts\python.exe vision\track.py samples\bounce.mp4 --dump-frame results\frame0.png
-.\.venv\Scripts\python.exe vision\track.py samples\bounce.mp4 --point 375,722 --output results\tracking.json
-.\build\Release\phystwin.exe fit results\tracking.json --output results\reconstruction.json
-.\.venv\Scripts\python.exe vision\plot_reconstruction.py results\tracking.json results\reconstruction.json
-.\.venv\Scripts\python.exe vision\overlay_comparison.py samples\bounce.mp4 results\tracking.json results\reconstruction.json --still results\overlay_still.png
+.\.venv\Scripts\python.exe vision\track.py samples\bounce.mp4 --point 375,722 --output results\cases\mixkit_tennis\tracking.json
+.\build\Release\phystwin.exe fit results\cases\mixkit_tennis\tracking.json --output results\cases\mixkit_tennis\reconstruction.json
+.\.venv\Scripts\python.exe vision\plot_reconstruction.py results\cases\mixkit_tennis\tracking.json results\cases\mixkit_tennis\reconstruction.json
+.\.venv\Scripts\python.exe vision\overlay_comparison.py samples\bounce.mp4 results\cases\mixkit_tennis\tracking.json results\cases\mixkit_tennis\reconstruction.json --gif docs\demo\mixkit_overlay.gif --still docs\demo\mixkit_overlay.png --panel-height 320 --gif-stride 4 --gif-max-width 540 --gif-colors 48 --title "Mixkit tennis bounce (recorded)"
 ```
 
-Generated diagonal clip through the same loop:
+Generated diagonal clip through the same loop (pipeline check, not real-footage accuracy):
 
 ```powershell
 .\.venv\Scripts\python.exe vision\make_bounce_clip.py --output samples\generated_diagonal.mp4 --x0 80 --y0 40 --vx 140 --vy 20 --g 1800 --e 0.72
@@ -139,7 +164,7 @@ Generated diagonal clip through the same loop:
 
 Generated drop uses `--x0 320 --y0 36 --vx 4 --vy 50 --g 1600 --e 0.40` and `--point 320,36`.
 
-CMake without the helper, if VS CMake is already on PATH:
+CMake without the helper, after putting VS CMake on the current session PATH:
 
 ```powershell
 . .\scripts\vs-cmake.ps1
@@ -151,15 +176,16 @@ ctest --test-dir build -C Release --output-on-failure
 
 ## Limitations
 
-- Mixkit is slow-motion close-up stock footage. Constant `vx` fails enough to grade `fair` (13.79 px RMSE, 9.30% worst-axis error).
-- Two of the three video cases are rendered balls, then tracked. A fixed-camera phone clip is still a stronger recorded-physics test.
+- One recorded clip. Two of the three video cases are rendered balls that match the fitter's integrator, then tracked.
+- Mixkit is slow-motion close-up stock footage. The `fair` grade comes from the horizontal axis (9.30% of 90 px travel). Vertical error is 1.57%.
 - Monocular video has no metric scale. Fitted `g` is px/s^2.
-- One object, fixed camera, one ground line. No spin, drag, friction, or wall collisions in V1.
-- Bounce-contact frames are a plot heuristic. Late low-amplitude bounces can add extra detections. Pixel RMSE is the number to quote.
+- One object, fixed camera, one ground line. No spin, drag, friction, or wall collisions.
+- Default ground is max observed centroid y, so ground-violation only appears with an explicit `--ground-y`.
+- Bounce-contact frames are a plot heuristic. Pixel RMSE is the number to quote.
 - SAM 2's optional CUDA hole-filling kernel is not built (`nvcc` is missing). Tracking still runs on GPU through PyTorch.
 - System Python on this machine is 3.14 beta. Use `scripts\setup-vision.ps1` so SAM 2 / PyTorch run on 3.11.
-- No React / Three.js viewer. The overlay GIF and the three-case plot are the demo.
+- No React / Three.js viewer. The Mixkit overlay still and the three-case plot are the demo.
 
 ## Roadmap
 
-After V1: known-length scale calibration, extra collision planes, rotation, friction, a phone-camera clip, optional UI. Not required for this checkpoint.
+After this audited baseline: product UI, more recorded clips, optional calibration, a justified solver comparison. Not this checkpoint.

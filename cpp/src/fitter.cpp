@@ -383,6 +383,8 @@ Reconstruction Fitter::fit(const Trajectory& observed,
     reconstruction.ground_source =
         options.ground_y.has_value() ? "explicit" : "max_observed_centroid_y";
     reconstruction.n = static_cast<int>(observed.observations.size());
+    reconstruction.search_generations = generations;
+    reconstruction.refinement_iterations = refinement_iterations;
     reconstruction.iterations = generations + refinement_iterations;
     reconstruction.fit_seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();

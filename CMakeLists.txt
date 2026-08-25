@@ -58,4 +58,8 @@ if(PHYSTWIN_BUILD_TESTS)
     add_executable(phystwin_synthetic_fit_test cpp/tests/synthetic_fit_test.cpp)
     target_link_libraries(phystwin_synthetic_fit_test PRIVATE phystwin_core)
     add_test(NAME synthetic_fit COMMAND phystwin_synthetic_fit_test)
+
+    add_executable(phystwin_dropped_frame_test cpp/tests/dropped_frame_test.cpp)
+    target_link_libraries(phystwin_dropped_frame_test PRIVATE phystwin_core)
+    add_test(NAME dropped_frame COMMAND phystwin_dropped_frame_test)
 endif()

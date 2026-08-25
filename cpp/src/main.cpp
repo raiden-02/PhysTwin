@@ -88,7 +88,10 @@ int fit(const std::filesystem::path& path,
               << "ground_violation: " << reconstruction.ground_violation
               << " px\n"
               << "quality: " << reconstruction.quality << "\n"
-              << "optimizer_iterations: " << reconstruction.iterations << "\n"
+              << "search_generations: " << reconstruction.search_generations
+              << " (fixed DE budget)\n"
+              << "refinement_iterations: " << reconstruction.refinement_iterations
+              << " (step-halving safety net)\n"
               << "fit_seconds: " << reconstruction.fit_seconds << "\n";
 
     if (reconstruction.quality == "poor") {

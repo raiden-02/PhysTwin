@@ -50,12 +50,16 @@ def _parse_synthetic_stdout(text: str) -> dict:
     mae_match = re.search(r"^MAE:\s+([-\d.eE+]+)", text, re.MULTILINE)
     perturbed = re.search(r"^perturbed RMSE:\s+([-\d.eE+]+)", text, re.MULTILINE)
     iterations = re.search(r"^optimizer iterations:\s+(\d+)", text, re.MULTILINE)
+    search_gen = re.search(r"^search_generations:\s+(\d+)", text, re.MULTILINE)
+    refine = re.search(r"^refinement_iterations:\s+(\d+)", text, re.MULTILINE)
     fit_time = re.search(r"^fit time:\s+([-\d.eE+]+)", text, re.MULTILINE)
     return {
         "parameters": rows,
         "rmse_px": float(rmse_match.group(1)) if rmse_match else None,
         "mae_px": float(mae_match.group(1)) if mae_match else None,
         "perturbed_rmse_px": float(perturbed.group(1)) if perturbed else None,
+        "search_generations": int(search_gen.group(1)) if search_gen else None,
+        "refinement_iterations": int(refine.group(1)) if refine else None,
         "iterations": int(iterations.group(1)) if iterations else None,
         "fit_seconds": float(fit_time.group(1)) if fit_time else None,
         "stdout": text.strip(),
@@ -93,17 +97,22 @@ def _video_case(item: dict) -> dict:
             "reconstruction": item.get("reconstruction"),
             "plot": item.get("plot"),
             "overlay": item.get("overlay"),
-            "gif": item.get("gif"),
+            "gif": item.get("gif") if item.get("gif") and Path(item["gif"]).exists() else None,
             "still": item.get("still"),
         },
     }
     if raw:
+        seconds = raw.get("end_to_end_seconds", raw.get("inference_seconds"))
+        fps_rate = raw.get("end_to_end_fps", raw.get("inference_fps"))
         result["tracking_runtime"] = {
             "device": raw.get("device"),
             "n_frames": raw.get("n_frames"),
             "skipped_empty_masks": raw.get("skipped_empty_masks"),
-            "inference_seconds": raw.get("inference_seconds"),
-            "inference_fps": raw.get("inference_fps"),
+            "end_to_end_seconds": seconds,
+            "end_to_end_fps": fps_rate,
+            "timing_includes": raw.get(
+                "timing_includes", "model_load,init_state,jpeg_decode,propagate"
+            ),
             "point": raw.get("point"),
         }
     return result
@@ -111,7 +120,7 @@ def _video_case(item: dict) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--manifest", default="docs/evaluation_manifest.json")
+    parser.add_argument("--manifest", default="results/cases/manifest.json")
     parser.add_argument("--output", default="docs/evaluation.json")
     args = parser.parse_args()
 
@@ -134,8 +143,11 @@ def main() -> int:
             cases.append(_video_case(item))
 
     payload = {
-        "date": manifest.get("date", date.today().isoformat()),
-        "notes": manifest.get("notes"),
+        "date": date.today().isoformat(),
+        "notes": (
+            "Numbers copied from measured reconstruction.json files and "
+            "synthetic_fit stdout. Re-run scripts/run-eval.ps1 to refresh."
+        ),
         "cases": cases,
     }
     output = Path(args.output)

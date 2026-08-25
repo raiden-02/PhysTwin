@@ -36,6 +36,11 @@ struct Reconstruction {
     std::string quality;
     std::string ground_source;
     int n = 0;
+    // Fixed differential-evolution generation budget, not adaptive.
+    int search_generations = 0;
+    // Coordinate-refinement step halvings. Typical runs accept no improvement
+    // after DE, so this is a safety-net cost, not a convergence statistic.
+    int refinement_iterations = 0;
     int iterations = 0;
     double fit_seconds = 0.0;
 };

@@ -18,7 +18,7 @@ from eval_metrics import contact_timing
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--manifest", default="docs/evaluation_manifest.json")
+    parser.add_argument("--manifest", default="results/cases/manifest.json")
     parser.add_argument("--output", default="docs/demo/observed_vs_simulated.png")
     args = parser.parse_args()
 
@@ -26,6 +26,8 @@ def main() -> int:
     cases = []
     for item in manifest["cases"]:
         if "tracking" not in item:
+            continue
+        if item.get("kind") == "recorded_video_failure":
             continue
         tracking = json.loads(Path(item["tracking"]).read_text(encoding="utf-8"))
         reconstruction = json.loads(

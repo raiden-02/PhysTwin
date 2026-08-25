@@ -164,8 +164,11 @@ int main() {
                   << "RMSE: " << recovered.rmse << " px\n"
                   << "MAE: " << recovered.mae << " px\n"
                   << "perturbed RMSE: " << perturbed_rmse << " px\n"
-                  << "optimizer iterations: " << recovered.iterations << "\n"
+                  << "search_generations: " << recovered.search_generations << "\n"
+                  << "refinement_iterations: " << recovered.refinement_iterations
+                  << "\n"
                   << "fit time: " << recovered.fit_seconds << " s\n";
+        require(recovered.search_generations == 160, "search generation budget");
         return 0;
     } catch (const std::exception& ex) {
         std::cerr << "synthetic_fit failed: " << ex.what() << "\n";

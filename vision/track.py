@@ -68,7 +68,10 @@ def read_video_meta(video: Path) -> tuple[float, int, int, int]:
         raise RuntimeError(f"failed to open video: {video}")
     fps = float(cap.get(cv2.CAP_PROP_FPS))
     if not np.isfinite(fps) or fps <= 1e-3:
-        fps = 30.0
+        raise RuntimeError(
+            f"video fps metadata is missing or invalid ({fps}). "
+            "Refusing to assume 30 fps because gravity scale depends on the time base."
+        )
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -239,7 +242,8 @@ def track(
         infer_fps = n_frames / elapsed if elapsed > 0 else 0.0
         print(
             f"tracked {len(observations)}/{n_frames} frames in {elapsed:.2f}s "
-            f"({infer_fps:.1f} FPS), skipped {skipped} empty masks",
+            f"end-to-end ({infer_fps:.1f} FPS including model load, JPEG decode, "
+            f"and propagation), skipped {skipped} empty masks",
             file=sys.stderr,
         )
         if not observations:
@@ -263,6 +267,9 @@ def track(
                     "point": [point[0], point[1]],
                     "n_frames": n_frames,
                     "skipped_empty_masks": skipped,
+                    "end_to_end_seconds": elapsed,
+                    "end_to_end_fps": infer_fps,
+                    "timing_includes": "model_load,init_state,jpeg_decode,propagate",
                     "inference_seconds": elapsed,
                     "inference_fps": infer_fps,
                     "device": torch.cuda.get_device_name(0),

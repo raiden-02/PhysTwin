@@ -189,6 +189,39 @@ button:hover:not(:disabled),
   font-size: 12px;
 }
 
+.model-choice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.model-choice label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.model-choice label.selected {
+  border-color: var(--obs);
+  background: #122630;
+}
+
+.model-choice input {
+  grid-row: 1 / 3;
+  align-self: start;
+  margin-top: 3px;
+}
+
+.model-choice span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .upload {
   position: relative;
   overflow: hidden;
@@ -249,10 +282,16 @@ button:hover:not(:disabled),
   width: 18px;
   height: 18px;
   margin: -9px 0 0 -9px;
-  border: 2px solid #b8ff5a;
+  border: 2px solid var(--obs);
   border-radius: 50%;
   pointer-events: none;
   box-shadow: 0 0 0 1px #000;
+}
+
+.marker.pivot {
+  border-color: #f2d96b;
+  border-radius: 2px;
+  transform: rotate(45deg);
 }
 
 .clickform {
@@ -480,7 +519,8 @@ button:hover:not(:disabled),
 
 @media (max-width: 720px) {
   .viewer,
-  .clickstep {
+  .clickstep,
+  .model-choice {
     grid-template-columns: 1fr;
   }
 }

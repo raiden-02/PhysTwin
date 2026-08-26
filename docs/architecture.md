@@ -1,21 +1,20 @@
-# PhysTwin V1 architecture
+# PhysTwin architecture
 
-PhysTwin reconstructs a simple 2D physics motion from a short fixed-camera video of one moving object.
-
-This document is the Day-1 design plus the Checkpoint 7 local UI. Checkpoint 6 remains the audited C++/SAM 2 baseline: honest recorded vs rendered vs synthetic labels, a saved poor-fit case, and a dropped-frame test. Ceres is still out. Extra recorded clips are Checkpoint 8.
+PhysTwin reconstructs one tracked object's 2D image-space motion with a selected projectile/bounce or nonlinear pendulum model.
 
 ## Pipeline
 
 ```text
-real video + one click
+video + model choice + target/reference clicks
         |
         v
 Python worker (SAM 2 / PyTorch / CUDA)
-  track.py writes tracking.json
+  track.py writes model-aware tracking.json
         |
         v
 C++20 core
-  phystwin fit → reconstruction.json
+  phystwin fit dispatches to projectile or pendulum
+  and writes model-aware reconstruction.json
         |
         +--> plot_reconstruction.py / overlay_comparison.py
         |
@@ -39,7 +38,7 @@ phystwin/
   results/                measured outputs. Not committed
   docs/architecture.md    this file
   docs/evaluation.json    measured evaluation numbers
-  docs/demo/              committed overlays, GIF, three-case plot
+  docs/demo/              committed overlays, GIFs, and comparison plots
 ```
 
 `scripts/serve-ui.ps1` builds `frontend/` and serves it from `vision/serve.py` on `http://127.0.0.1:8765`.
@@ -58,14 +57,13 @@ C++20 owns:
 Python owns the ML worker and the localhost adapter:
 
 - load SAM 2 / PyTorch
-- accept a click or box on frame 0
+- accept a target click on frame 0
+- accept a fixed pivot click for pendulum mode
 - propagate the mask through the clip on the local RTX 4080
 - emit `tracking.json`
 - `vision/serve.py` runs those steps and `phystwin.exe` for the browser
 
-Do not port SAM 2 to C++ in V1.
-
-TypeScript / React / Three.js owns the product loop: upload, click, stage display, synchronized playback, reconstructed motion, metrics. Three.js draws the simulated trajectory on the source video plane. It is not a general 3D engine.
+TypeScript, React, and Three.js own the product loop: model choice, upload, selections, stage display, synchronized playback, reconstructed motion, and metrics. Three.js renders C++ reconstruction samples. It does not integrate either physics model.
 
 ## JSON contracts
 
@@ -74,9 +72,11 @@ TypeScript / React / Three.js owns the product loop: upload, click, stage displa
 ```json
 {
   "version": 1,
+  "model": "pendulum",
   "fps": 60.0,
   "frame_width": 1920,
   "frame_height": 1080,
+  "reference": {"pivot_x": 960.0, "pivot_y": 120.0},
   "observations": [
     {"frame": 0, "t": 0.0, "x": 531.2, "y": 312.7}
   ]
@@ -89,8 +89,10 @@ Required:
 - `fps` > 0
 - `observations` non-empty
 - each observation has `frame`, `t`, `x`, `y`
+- `model` is `projectile_bounce` or `pendulum`. Missing means `projectile_bounce` for backward compatibility
+- pendulum input requires `reference.pivot_x` and `reference.pivot_y`
 
-Optional on each observation, ignored by the V1 fitter if present:
+Optional on each observation:
 
 - `confidence`
 - `bbox_x`, `bbox_y`, `bbox_w`, `bbox_h`
@@ -100,11 +102,12 @@ Positions are image pixels. Origin is the top-left of the frame. `x` increases r
 
 Time `t` is seconds from the start of the clip. The usual value is `frame / fps`. The fitter uses the `t` values in the file, not a reconstructed index, so dropped frames stay honest.
 
-### `reconstruction.json` (C++ output, Checkpoint 1+)
+### `reconstruction.json` (C++ output)
 
 ```json
 {
   "version": 1,
+  "model": "projectile_bounce",
   "parameters": { "vx0": 0.0, "vy0": 0.0, "g": 0.0, "e": 0.0 },
   "environment": { "x0": 0.0, "y0": 0.0, "y_ground": 0.0, "dt": 0.016667 },
   "units": {
@@ -135,26 +138,65 @@ Time `t` is seconds from the start of the clip. The usual value is `frame / fps`
 }
 ```
 
-`phystwin fit` writes this file. The simulated array has one point for each input observation.
+Pendulum output uses the same `simulated` point array with model-specific fields:
+
+```json
+{
+  "version": 1,
+  "model": "pendulum",
+  "parameters": {
+    "omega0": -0.35,
+    "lambda": 7.2,
+    "damping": 0.22
+  },
+  "environment": {
+    "pivot_x": 400.0,
+    "pivot_y": 170.0,
+    "radius": 220.0,
+    "theta0": 0.9,
+    "integration_step": 0.004167
+  },
+  "metrics": {
+    "rmse": 0.0,
+    "normalized_rmse": 0.0,
+    "robust_cost": 0.0,
+    "radial_mad": 0.0,
+    "angular_span": 1.8,
+    "pivot_adjustment": 0.0,
+    "quality": "good"
+  },
+  "simulated": [
+    {"frame": 0, "t": 0.0, "x": 572.3, "y": 306.8}
+  ]
+}
+```
+
+`phystwin fit` writes one simulated Cartesian bob position for each input observation. Three.js consumes these positions directly.
 
 ## Coordinates, units, scale
 
 Monocular video does not give metric scale.
 
-V1 reports:
+PhysTwin reports:
 
 - position in pixels
 - velocity in pixels per second
 - gravity as a **gravity scale** `g` in pixels per second squared, not `9.81 m/s²`
 - restitution `e` dimensionless in `[0, 1]`
+- pendulum angles in radians
+- angular velocity in radians per second
+- effective pendulum `lambda = g/L` in inverse seconds squared
+- damping in inverse seconds
 
-Do not claim SI units unless a later checkpoint adds a known scene length (ball diameter or similar).
+Do not interpret image-space radius as physical pendulum length or `lambda` as metric gravity.
 
 Normalized `[0, 1]` coordinates are not the default. Pixel RMSE is the number a reviewer can check against a plot. If we normalize later, we store the scale used.
 
-## Physics model
+## Physics models
 
-One rigid point mass in 2D image space. No rotation, drag, friction, or object-object collision in V1.
+### Projectile / Bounce
+
+One point mass in 2D image space. No rotation, drag, friction, or object-object collision.
 
 Parameters θ:
 
@@ -184,15 +226,38 @@ Collision is a hard clamp against one horizontal ground line. Contact timing is 
 
 Why this integrator: it is deterministic, matches frame-rate sampling, and is easy to explain. It is not energy-conserving. Bounce timing error of about one frame is expected.
 
+### Swing / Pendulum
+
+The image-space angle is measured from the downward vertical:
+
+```text
+theta = atan2(target_x - pivot_x, target_y - pivot_y)
+```
+
+The simulator integrates:
+
+```text
+theta'' = -lambda * sin(theta) - damping * theta'
+```
+
+It uses RK4 with a bounded internal step and samples the result at the actual observation timestamps. Simulated bob positions are:
+
+```text
+x = pivot_x + radius * sin(theta)
+y = pivot_y + radius * cos(theta)
+```
+
+The radius is the median target-to-pivot distance. A deterministic bounded search may adjust the clicked pivot by a small amount if that improves radial consistency.
+
 ## System identification
 
-Observed points `P_obs(t_i)`. Simulator points `P_sim(t_i; θ)` sampled at the same times.
+Observed points `P_obs(t_i)`. Simulator points `P_sim(t_i; θ)` are sampled at the same times.
 
 ```text
 θ* = arg min_θ  Σ_i ||P_obs(t_i) - P_sim(t_i; θ)||²
 ```
 
-The Checkpoint 1 fitter minimizes unweighted residuals. `vx0` is separable from the collision dynamics, so it is solved exactly by scalar linear least squares. The remaining `(vy0, g, e)` values minimize the vertical squared residuals.
+The projectile fitter uses unweighted residuals. `vx0` is separable from the collision dynamics, so it is solved by scalar linear least squares. The remaining `(vy0, g, e)` values minimize the vertical squared residuals.
 
 Restitution and the hard ground clamp make the objective non-smooth near bounce times. The current fitter uses a fixed-seed bounded differential search followed by deterministic coordinate refinement. It adds no numerical dependency and produces repeatable results. This is still an unweighted least-squares fit: the search minimizes the mean squared position residual.
 
@@ -206,31 +271,19 @@ An explicit ground is `poor` if observed centroids cross it by more than 5 px or
 
 The differential-evolution generation count is a **fixed budget of 160**, not an adaptive stopping time. Coordinate refinement then halves a 0.05 step until it is below `1e-8`. On the measured cases that loop accepts no improvement after DE, so the printed `refinement_iterations` value is a safety-net cost, not evidence of extra convergence.
 
-Fallback order if real tracking is unstable:
+The pendulum fitter derives and unwraps the observed angle series. It rejects fewer than 12 observations, duration below 0.25 seconds, radius below 5 px, insufficient angular span, non-increasing timestamps, and inconsistent target-to-pivot radius.
 
-1. detect bounce times from the observed `y` series and fit flight segments
-2. robust loss
-3. derivative-free initialization, then local refinement
-4. keep the collision model simple
+It fits `(omega0, lambda, damping)` with a fixed-seed 220-generation bounded differential search followed by deterministic coordinate refinement. Same-direction zero crossings provide a measured period that seeds and bounds the `lambda` search. This prevents a fast real pendulum from being clipped by an arbitrary low upper bound. The objective applies a Huber loss to tangential position error, so a few noisy SAM centroids do not dominate. Final RMSE still uses the raw observed and simulated Cartesian positions.
 
-The choice must be justified from observed behavior, not from solver fashion.
+Pendulum quality uses `RMSE / radius`. `good` is at most 5%, `fair` is at most 15%, and larger error is `poor`.
 
-## Dependency plan
+## Dependencies
 
-| Need | Library | Checkpoint | Install plan |
-|---|---|---|---|
-| C++20 compile | MSVC (VS 18 Community) | 0 | already present |
-| `tracking.json` I/O | nlohmann/json 3.11.3 | 0 | CMake FetchContent |
-| Physics + synthetic tests | this repo | 1 | implemented, no extra dep |
-| Nonlinear least squares | deterministic bounded search | 1 | implemented in-repo because the collision residual is non-smooth |
-| Dense linear algebra | Eigen | later only if needed | skipped in Checkpoint 1 |
-| Video / masks | OpenCV via `opencv-python` | 2 | implemented in the 3.11 venv |
-| SAM 2 inference | PyTorch 2.13.0+cu126 + SAM 2.1 tiny | 2 | implemented on RTX 4080 SUPER. `SAM2_BUILD_CUDA=0` because `nvcc` is missing |
-| Plots | matplotlib `plot_reconstruction.py` / `plot_evaluation.py` | 4 | implemented |
-| Overlay GIF | OpenCV + Pillow `overlay_comparison.py` | 4 | implemented, no frontend required |
-| Interactive UI | React + TypeScript + Three.js + FastAPI | 7 | local only, `scripts/serve-ui.ps1` |
+The C++ graph contains the standard library and `nlohmann/json` 3.11.3 through CMake FetchContent. It does not depend on Ceres, Eigen, OpenCV, or PyTorch.
 
-Ceres, Eigen, OpenCV, and PyTorch are not in the C++ CMake graph. A missing optional package must not break `cmake --build`.
+The Python 3.11 environment contains PyTorch, SAM 2.1 tiny, OpenCV, FastAPI, matplotlib, and Pillow. `SAM2_BUILD_CUDA=0` because `nvcc` is unavailable. Model inference still runs through CUDA-enabled PyTorch.
+
+The frontend uses React, TypeScript, and Three.js.
 
 ## CLI
 
@@ -238,12 +291,12 @@ Ceres, Eigen, OpenCV, and PyTorch are not in the C++ CMake graph. A missing opti
 phystwin inspect tracking.json
 phystwin fit tracking.json --output reconstruction.json
 python vision/track.py input.mp4 --point 531,312 --output tracking.json
+python vision/track.py pendulum.mp4 --model pendulum \
+  --point 111,858 --pivot 385,92 --output tracking.json
 ```
 
-Checkpoint 6:
-
 - `inspect` loads the contract and prints a summary
-- `fit` loads observations, fits parameters, writes reconstruction JSON, and prints quality
+- `fit` dispatches from `tracking.json.model`, writes reconstruction JSON, and prints quality
 - `fit --ground-y PIXELS` overrides the default maximum-centroid ground estimate
 - poor fits write diagnostic output and exit with code 2
 - `vision/track.py` runs SAM 2 on CUDA and writes `tracking.json`
@@ -252,9 +305,9 @@ Checkpoint 6:
 - empty masks are omitted from `observations` and recorded in `tracking_raw.json`
 - `vision/plot_reconstruction.py` plots observed vs simulated trajectories
 - `vision/overlay_comparison.py` writes a side-by-side MP4, still PNG, and optional GIF
-- `vision/plot_evaluation.py` builds the three-case README figure from `results/cases/manifest.json`
-- `scripts/run-eval.ps1` requires `samples/bounce.mp4`, tracks Mixkit into a dedicated path, writes a poor-fit case, and refreshes `docs/evaluation.json`
-- `vision/serve.py` is a localhost FastAPI adapter: upload or sample, first-frame click, SAM 2, `phystwin fit`, SSE stages, JSON result
+- `vision/plot_evaluation.py` builds the saved comparison figure from `results/cases/manifest.json`
+- `scripts/run-eval.ps1` refreshes projectile and pendulum synthetic, video, and failure evidence
+- `vision/serve.py` is a localhost FastAPI adapter for model choice, target/pivot selections, SAM 2, `phystwin fit`, SSE stages, and JSON results
 - `frontend/` is the React + TypeScript + Three.js UI
 
 Create the venv once:
@@ -272,15 +325,17 @@ SAM 2.1 tiny weights download to `checkpoints/sam2.1_hiera_tiny.pt` on first run
 | `io_roundtrip` | write/load `tracking.json`, assert fields and identical-trajectory RMSE |
 | `synthetic_fit` | generate 241 frames with two ground contacts, recover known `vx0, vy0, g, e`, enforce explicit tolerances, and reject a perturbed negative control |
 | `dropped_frame` | drop a contiguous interior gap from a synthetic trajectory, assert the simulator samples the remaining timestamps, and recover the same parameters |
+| `pendulum_fit` | recover standard and fast nonlinear pendulum parameters, test deterministic noise/outliers, and reject five degenerate inputs |
 | `vision/test_trajectory.py` | CPU mask centroid/bbox extraction |
 | `vision/test_serve.py` | UI server can find `phystwin.exe` and list Mixkit when present |
 
-## What is intentionally not in Checkpoint 7
+## Out of scope
 
 - Ceres
 - physical-scale calibration
-- additional recorded camera clips
-- robust loss, confidence weights, smoothing, or outlier rejection
+- camera-motion compensation
+- depth or 3D camera-space reconstruction
+- automatic model discovery
+- bungee, spring, or general rigid-body dynamics
 - Eigen or OpenCV C++ packages
 - SAM 2 CUDA post-process extension (`nvcc` not installed)
-- a phone-camera clip in git. Recorded evidence is still the Mixkit stock clip. The other two video cases are rendered, then tracked with SAM 2

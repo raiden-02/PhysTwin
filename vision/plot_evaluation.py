@@ -33,12 +33,18 @@ def main() -> int:
         reconstruction = json.loads(
             Path(item["reconstruction"]).read_text(encoding="utf-8")
         )
+        model = reconstruction.get("model", "projectile_bounce")
         cases.append(
             {
                 "title": item["title"],
                 "tracking": tracking,
                 "reconstruction": reconstruction,
-                "timing": contact_timing(tracking, reconstruction),
+                "model": model,
+                "timing": (
+                    contact_timing(tracking, reconstruction)
+                    if model == "projectile_bounce"
+                    else None
+                ),
             }
         )
     if not cases:
@@ -69,15 +75,24 @@ def main() -> int:
         xy.grid(alpha=0.3)
         xy.legend(loc="best", fontsize=8)
         bounce = ""
-        if case["timing"].get("paired"):
+        if case["timing"] and case["timing"].get("paired"):
             bounce = (
                 f"bounce err {case['timing']['mean_error_frames']:.2f} fr "
                 f"({case['timing']['mean_error_ms']:.1f} ms)"
             )
+        if case["model"] == "pendulum":
+            parameter_line = (
+                f"lambda={parameters['lambda']:.3f} s^-2  "
+                f"damping={parameters['damping']:.3f} s^-1"
+            )
+        else:
+            parameter_line = (
+                f"g={parameters['g']:.1f} px/s²  e={parameters['e']:.3f}"
+            )
         xy.set_title(
             f"{case['title']}\n"
             f"RMSE {metrics['rmse']:.2f} px · {metrics['quality']}\n"
-            f"g={parameters['g']:.1f} px/s²  e={parameters['e']:.3f}\n"
+            f"{parameter_line}\n"
             f"{bounce}".rstrip(),
             fontsize=10,
         )

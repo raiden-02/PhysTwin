@@ -12,7 +12,13 @@ import {
 import { imageClick, STAGE_LABELS, STAGE_ORDER } from "./geom";
 import { ReconstructionScene } from "./Scene";
 import { TrajectoryPlot } from "./Trajectory";
-import type { Job, ProgressEvent, Result, Sample } from "./types";
+import type {
+  DynamicsModel,
+  Job,
+  ProgressEvent,
+  Result,
+  Sample,
+} from "./types";
 
 function fmt(n: number, digits = 2): string {
   return n.toFixed(digits);
@@ -31,13 +37,15 @@ function stageText(event: ProgressEvent | null, job: Job | null): string {
 const QUALITY_TEXT: Record<string, string> = {
   good: "The simulation matches the recording closely.",
   fair: "Usable, but check the two views before trusting the parameters.",
-  poor: "Do not trust these parameters. Error is too large, or the object crosses the ground line.",
+  poor: "Do not trust these parameters. The selected model does not explain this track well.",
 };
 
 export function App() {
   const [samples, setSamples] = useState<Sample[]>([]);
   const [job, setJob] = useState<Job | null>(null);
+  const [model, setModel] = useState<DynamicsModel>("projectile_bounce");
   const [click, setClick] = useState<{ x: number; y: number } | null>(null);
+  const [pivot, setPivot] = useState<{ x: number; y: number } | null>(null);
   const [groundText, setGroundText] = useState("");
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
   const [result, setResult] = useState<Result | null>(null);
@@ -89,13 +97,14 @@ export function App() {
     setResult(null);
     setProgress(null);
     setClick(null);
+    setPivot(null);
   }
 
   async function onSample(sampleId: string) {
     reset();
     setBusy(true);
     try {
-      setJob(await createJobFromSample(sampleId));
+      setJob(await createJobFromSample(sampleId, model));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -107,7 +116,7 @@ export function App() {
     reset();
     setBusy(true);
     try {
-      setJob(await createJobFromFile(file));
+      setJob(await createJobFromFile(file, model));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -123,22 +132,29 @@ export function App() {
       job.width,
       job.height,
     );
-    if (point) setClick(point);
+    if (!point) return;
+    if (model === "pendulum" && click && !pivot) {
+      setPivot(point);
+    } else {
+      setClick(point);
+      if (model === "pendulum") setPivot(null);
+    }
   }
 
   async function onProcess(event: FormEvent) {
     event.preventDefault();
-    if (!job || !click) return;
+    if (!job || !click || (model === "pendulum" && !pivot)) return;
     setError(null);
     setResult(null);
-    const groundY = groundText.trim() === "" ? null : Number(groundText);
+    const groundY =
+      model === "pendulum" || groundText.trim() === "" ? null : Number(groundText);
     if (groundY != null && !Number.isFinite(groundY)) {
       setError("ground y must be a number, or leave it empty");
       return;
     }
     setBusy(true);
     try {
-      setJob(await runJob(job.id, click.x, click.y, groundY));
+      setJob(await runJob(job.id, click.x, click.y, pivot, groundY));
       setProgress({ stage: "queued", detail: "starting local SAM 2 + phystwin fit" });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -176,7 +192,9 @@ export function App() {
         <h1>PhysTwin</h1>
         <ol className="stepper">
           <li className={step === 1 ? "on" : "done"}>Pick a video</li>
-          <li className={step === 2 ? "on" : step > 2 ? "done" : ""}>Click the object</li>
+          <li className={step === 2 ? "on" : step > 2 ? "done" : ""}>
+            Select target and reference
+          </li>
           <li className={step === 3 ? "on" : ""}>Compare and read the fit</li>
         </ol>
       </header>
@@ -187,6 +205,7 @@ export function App() {
         <div className="sourcebar">
           <span className="name">{job.source_name}</span>
           <span className="facts">
+            {job.model === "pendulum" ? "Swing / Pendulum" : "Projectile / Bounce"} ·{" "}
             {job.width}×{job.height} · {fmt(job.fps, 2)} fps · {job.n_frames} frames
             {job.kind === "rendered" ? " · rendered check, not real-footage accuracy" : ""}
             {job.kind === "recorded" ? " · recorded footage" : ""}
@@ -206,9 +225,34 @@ export function App() {
 
       {!job ? (
         <section className="panel">
-          <h2>Pick a video</h2>
+          <h2>Physics model</h2>
+          <div className="model-choice" role="radiogroup" aria-label="Physics model">
+            <label className={model === "projectile_bounce" ? "selected" : ""}>
+              <input
+                type="radio"
+                name="model"
+                checked={model === "projectile_bounce"}
+                onChange={() => setModel("projectile_bounce")}
+              />
+              <strong>Projectile / Bounce</strong>
+              <span>Free flight, gravity, ground collision, restitution</span>
+            </label>
+            <label className={model === "pendulum" ? "selected" : ""}>
+              <input
+                type="radio"
+                name="model"
+                checked={model === "pendulum"}
+                onChange={() => setModel("pendulum")}
+              />
+              <strong>Swing / Pendulum</strong>
+              <span>Fixed pivot, nonlinear swing, effective g/L, damping</span>
+            </label>
+          </div>
+          <h2>Video</h2>
           <p className="hint">
-            Use a local sample, or upload a fixed-camera clip of one bouncing object.
+            {model === "pendulum"
+              ? "Upload a fixed-camera clip with one visible bob and a fixed pivot."
+              : "Use a local sample, or upload a fixed-camera clip of one bouncing object."}
           </p>
           <div className="row">
             {samples.map((sample) => (
@@ -246,42 +290,95 @@ export function App() {
               <img ref={frameRef} src={frame0Url(job.id)} alt="first frame" onClick={onFrameClick} />
               {click ? (
                 <span
-                  className="marker"
+                  className="marker target"
                   style={{
                     left: `${(click.x / job.width) * 100}%`,
                     top: `${(click.y / job.height) * 100}%`,
                   }}
                 />
               ) : null}
+              {pivot ? (
+                <span
+                  className="marker pivot"
+                  style={{
+                    left: `${(pivot.x / job.width) * 100}%`,
+                    top: `${(pivot.y / job.height) * 100}%`,
+                  }}
+                />
+              ) : null}
             </div>
           </div>
           <form className="clickform" onSubmit={(event) => void onProcess(event)}>
-            <h2>Click the object on frame 0</h2>
+            <h2>
+              {model === "pendulum"
+                ? click
+                  ? pivot
+                    ? "Ready to track and fit"
+                    : "Now click the fixed pivot"
+                  : "First click the moving bob"
+                : "Click the object on frame 0"}
+            </h2>
             <p className="hint">{job.hint}</p>
             <p className="coords">
-              {click ? `click ${fmt(click.x, 1)}, ${fmt(click.y, 1)} px` : "no click yet"}
+              {click
+                ? `target ${fmt(click.x, 1)}, ${fmt(click.y, 1)} px`
+                : "target not selected"}
+              {model === "pendulum" &&
+                (pivot
+                  ? ` · pivot ${fmt(pivot.x, 1)}, ${fmt(pivot.y, 1)} px`
+                  : " · pivot not selected")}
             </p>
             {job.suggested_point ? (
               <button
                 type="button"
-                onClick={() => setClick({ x: job.suggested_point![0], y: job.suggested_point![1] })}
+                onClick={() => {
+                  setClick({
+                    x: job.suggested_point![0],
+                    y: job.suggested_point![1],
+                  });
+                  if (job.suggested_pivot) {
+                    setPivot({
+                      x: job.suggested_pivot[0],
+                      y: job.suggested_pivot[1],
+                    });
+                  }
+                }}
               >
-                Use suggested click
+                {model === "pendulum"
+                  ? "Use suggested selections"
+                  : "Use suggested click"}
               </button>
             ) : null}
-            <label className="ground">
-              ground y (optional)
-              <input
-                value={groundText}
-                onChange={(event) => setGroundText(event.target.value)}
-                placeholder="max centroid"
-              />
-            </label>
-            <button className="primary" type="submit" disabled={!click || busy}>
+            {model === "projectile_bounce" ? (
+              <label className="ground">
+                ground y (optional)
+                <input
+                  value={groundText}
+                  onChange={(event) => setGroundText(event.target.value)}
+                  placeholder="max centroid"
+                />
+              </label>
+            ) : null}
+            {model === "pendulum" && click ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setClick(null);
+                  setPivot(null);
+                }}
+              >
+                Reset selections
+              </button>
+            ) : null}
+            <button
+              className="primary"
+              type="submit"
+              disabled={!click || (model === "pendulum" && !pivot) || busy}
+            >
               Track and fit
             </button>
             <p className="hint small">
-              Tracking runs on the local GPU and takes about 20 s for a 280 frame clip.
+              Tracking runs locally on the GPU. Runtime scales with clip length.
             </p>
           </form>
         </section>
@@ -328,7 +425,11 @@ export function App() {
               />
             </div>
             <div className="pane media">
-              <h2>Reconstruction</h2>
+              <h2>
+                {result.reconstruction.model === "pendulum"
+                  ? "Pendulum physics twin"
+                  : "Projectile physics twin"}
+              </h2>
               <ReconstructionScene
                 video={videoEl}
                 tracking={result.tracking}
@@ -363,6 +464,8 @@ export function App() {
               onClick={() => {
                 setResult(null);
                 setProgress(null);
+                setClick(null);
+                setPivot(null);
                 setJob((prev) => (prev ? { ...prev, status: "ready", stage: "ready" } : prev));
               }}
             >
@@ -384,23 +487,59 @@ export function App() {
                 {fmt(result.reconstruction.metrics.rmse_y, 2)}
               </span>
             </div>
-            <div className="card">
-              <span className="label">gravity scale</span>
-              <span className="value">{fmt(result.reconstruction.parameters.g, 1)}</span>
-              <span className="sub">px/s², not 9.81 m/s²</span>
-            </div>
-            <div className="card">
-              <span className="label">bounciness</span>
-              <span className="value">{fmt(result.reconstruction.parameters.e, 3)}</span>
-              <span className="sub">restitution e, 0 to 1</span>
-            </div>
-            <div className="card">
-              <span className="label">start velocity</span>
-              <span className="value">{fmt(result.reconstruction.parameters.vy0, 0)} px/s</span>
-              <span className="sub">
-                down · across {fmt(result.reconstruction.parameters.vx0, 1)}
-              </span>
-            </div>
+            {result.reconstruction.model === "projectile_bounce" ? (
+              <>
+                <div className="card">
+                  <span className="label">gravity scale</span>
+                  <span className="value">
+                    {fmt(result.reconstruction.parameters.g, 1)}
+                  </span>
+                  <span className="sub">px/s², not 9.81 m/s²</span>
+                </div>
+                <div className="card">
+                  <span className="label">bounciness</span>
+                  <span className="value">
+                    {fmt(result.reconstruction.parameters.e, 3)}
+                  </span>
+                  <span className="sub">restitution e, 0 to 1</span>
+                </div>
+                <div className="card">
+                  <span className="label">start velocity</span>
+                  <span className="value">
+                    {fmt(result.reconstruction.parameters.vy0, 0)} px/s
+                  </span>
+                  <span className="sub">
+                    down · across {fmt(result.reconstruction.parameters.vx0, 1)}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="card">
+                  <span className="label">effective lambda</span>
+                  <span className="value">
+                    {fmt(result.reconstruction.parameters.lambda, 3)} s⁻²
+                  </span>
+                  <span className="sub">effective g/L, not metric gravity</span>
+                </div>
+                <div className="card">
+                  <span className="label">damping</span>
+                  <span className="value">
+                    {fmt(result.reconstruction.parameters.damping, 3)} s⁻¹
+                  </span>
+                  <span className="sub">non-negative angular damping</span>
+                </div>
+                <div className="card">
+                  <span className="label">initial angular speed</span>
+                  <span className="value">
+                    {fmt(result.reconstruction.parameters.omega0, 3)} rad/s
+                  </span>
+                  <span className="sub">
+                    radius {fmt(result.reconstruction.environment.radius, 1)} px
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="split metrics">
@@ -415,13 +554,35 @@ export function App() {
             <div className="pane">
               <h2>Run details</h2>
               <dl className="kv">
-                <dt>ground violation</dt>
-                <dd>{fmt(result.reconstruction.metrics.ground_violation, 2)} px</dd>
-                <dt>y_ground</dt>
-                <dd>
-                  {fmt(result.reconstruction.environment.y_ground, 1)} px (
-                  {result.reconstruction.metrics.ground_source})
-                </dd>
+                {result.reconstruction.model === "projectile_bounce" ? (
+                  <>
+                    <dt>ground violation</dt>
+                    <dd>
+                      {fmt(result.reconstruction.metrics.ground_violation, 2)} px
+                    </dd>
+                    <dt>y_ground</dt>
+                    <dd>
+                      {fmt(result.reconstruction.environment.y_ground, 1)} px (
+                      {result.reconstruction.metrics.ground_source})
+                    </dd>
+                  </>
+                ) : (
+                  <>
+                    <dt>fitted pivot</dt>
+                    <dd>
+                      {fmt(result.reconstruction.environment.pivot_x, 1)},{" "}
+                      {fmt(result.reconstruction.environment.pivot_y, 1)} px
+                    </dd>
+                    <dt>pivot adjustment</dt>
+                    <dd>
+                      {fmt(result.reconstruction.metrics.pivot_adjustment, 2)} px
+                    </dd>
+                    <dt>radial MAD</dt>
+                    <dd>{fmt(result.reconstruction.metrics.radial_mad, 2)} px</dd>
+                    <dt>angular span</dt>
+                    <dd>{fmt(result.reconstruction.metrics.angular_span, 3)} rad</dd>
+                  </>
+                )}
                 <dt>click</dt>
                 <dd>
                   {result.job.point

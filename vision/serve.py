@@ -17,6 +17,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,6 +45,7 @@ SAMPLE_SPECS = [
         "kind": "recorded",
         "hint": "Click the ball. For this clip the known working click is 375, 722.",
         "suggested_point": [375.0, 722.0],
+        "suggested_pivot": None,
     },
     {
         "id": "generated_diagonal",
@@ -52,6 +54,7 @@ SAMPLE_SPECS = [
         "kind": "rendered",
         "hint": "Rendered pipeline check, not real-footage accuracy. Suggested click 80, 40.",
         "suggested_point": [80.0, 40.0],
+        "suggested_pivot": None,
     },
     {
         "id": "generated_drop",
@@ -60,6 +63,19 @@ SAMPLE_SPECS = [
         "kind": "rendered",
         "hint": "Rendered pipeline check, not real-footage accuracy. Suggested click 320, 36.",
         "suggested_point": [320.0, 36.0],
+        "suggested_pivot": None,
+    },
+    {
+        "id": "pendulum",
+        "path": ROOT / "samples" / "recorded" / "pendulum.mp4",
+        "label": "Physical pendulum (recorded)",
+        "kind": "recorded",
+        "hint": (
+            "Click the brass bob, then the fixed string pivot. "
+            "Known working selections are target 111,858 and pivot 385,92."
+        ),
+        "suggested_point": [111.0, 858.0],
+        "suggested_pivot": [385.0, 92.0],
     },
 ]
 
@@ -71,6 +87,8 @@ _jobs: dict[str, dict] = {}
 class RunBody(BaseModel):
     x: float
     y: float
+    pivot_x: float | None = None
+    pivot_y: float | None = None
     ground_y: float | None = Field(default=None)
 
 
@@ -103,6 +121,7 @@ def list_samples() -> list[dict]:
                 "kind": spec["kind"],
                 "hint": spec["hint"],
                 "suggested_point": spec["suggested_point"],
+                "suggested_pivot": spec["suggested_pivot"],
                 "filename": path.name,
                 "bytes": path.stat().st_size,
             }
@@ -127,11 +146,14 @@ def _snapshot(job: dict) -> dict:
         "kind": job["kind"],
         "hint": job["hint"],
         "suggested_point": job["suggested_point"],
+        "suggested_pivot": job["suggested_pivot"],
+        "model": job["model"],
         "fps": job["fps"],
         "width": job["width"],
         "height": job["height"],
         "n_frames": job["n_frames"],
         "point": job["point"],
+        "pivot": job["pivot"],
         "quality": job["quality"],
         "fit_exit": job["fit_exit"],
         "error": job["error"],
@@ -166,6 +188,8 @@ def _prepare_job(
     kind: str,
     hint: str,
     suggested_point: list[float] | None,
+    suggested_pivot: list[float] | None,
+    model: Literal["projectile_bounce", "pendulum"],
     job_dir: Path | None = None,
 ) -> dict:
     fps, width, height, n_frames = track_mod.read_video_meta(video_path)
@@ -182,6 +206,8 @@ def _prepare_job(
         "kind": kind,
         "hint": hint,
         "suggested_point": suggested_point,
+        "suggested_pivot": suggested_pivot,
+        "model": model,
         "fps": fps,
         "width": width,
         "height": height,
@@ -189,6 +215,7 @@ def _prepare_job(
         "status": "ready",
         "stage": "ready",
         "point": None,
+        "pivot": None,
         "quality": None,
         "fit_exit": None,
         "error": None,
@@ -202,7 +229,13 @@ def _prepare_job(
     return job
 
 
-def _run_pipeline(job: dict, x: float, y: float, ground_y: float | None) -> None:
+def _run_pipeline(
+    job: dict,
+    x: float,
+    y: float,
+    pivot: tuple[float, float] | None,
+    ground_y: float | None,
+) -> None:
     tracking_path = job["dir"] / "tracking.json"
     reconstruction_path = job["dir"] / "reconstruction.json"
     try:
@@ -227,6 +260,8 @@ def _run_pipeline(job: dict, x: float, y: float, ground_y: float | None) -> None
                 viz=None,
                 keep_frames=None,
                 on_progress=on_progress,
+                model=job["model"],
+                pivot=pivot,
             )
             _emit(job, "fitting", detail="phystwin fit")
             cmd = [str(exe), "fit", str(tracking_path), "--output", str(reconstruction_path)]
@@ -256,7 +291,7 @@ def _run_pipeline(job: dict, x: float, y: float, ground_y: float | None) -> None
         _emit(job, "failed", error=str(exc))
 
 
-app = FastAPI(title="PhysTwin local UI", version="0.7.0")
+app = FastAPI(title="PhysTwin local UI", version="0.8.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -294,6 +329,9 @@ def samples() -> dict:
 async def create_job(
     file: UploadFile | None = File(default=None),
     sample_id: str | None = Form(default=None),
+    model: Literal["projectile_bounce", "pendulum"] = Form(
+        default="projectile_bounce"
+    ),
 ) -> dict:
     if file is None and not sample_id:
         raise HTTPException(400, "upload a video or pass sample_id")
@@ -310,6 +348,8 @@ async def create_job(
             spec["kind"],
             spec["hint"],
             spec["suggested_point"],
+            spec["suggested_pivot"],
+            model,
         )
         return _snapshot(job)
 
@@ -327,8 +367,14 @@ async def create_job(
             dest,
             file.filename or dest.name,
             "upload",
-            "Click the moving object on frame 0.",
+            (
+                "Click the moving target, then the fixed pivot."
+                if model == "pendulum"
+                else "Click the moving object on frame 0."
+            ),
             None,
+            None,
+            model,
             job_dir=job_dir,
         )
     except Exception as exc:
@@ -372,15 +418,34 @@ def run_job(job_id: str, body: RunBody) -> dict:
                 f"click ({body.x:.1f}, {body.y:.1f}) is outside "
                 f"{job['width']}x{job['height']}",
             )
+        pivot = None
+        if job["model"] == "pendulum":
+            if body.pivot_x is None or body.pivot_y is None:
+                raise HTTPException(400, "pendulum mode requires a pivot click")
+            if not (
+                0.0 <= body.pivot_x <= job["width"]
+                and 0.0 <= body.pivot_y <= job["height"]
+            ):
+                raise HTTPException(
+                    400,
+                    f"pivot ({body.pivot_x:.1f}, {body.pivot_y:.1f}) is outside "
+                    f"{job['width']}x{job['height']}",
+                )
+            if body.ground_y is not None:
+                raise HTTPException(
+                    400, "ground y is only valid for Projectile / Bounce"
+                )
+            pivot = (body.pivot_x, body.pivot_y)
         job["status"] = "running"
         job["point"] = [body.x, body.y]
+        job["pivot"] = None if pivot is None else [pivot[0], pivot[1]]
         job["error"] = None
         job["quality"] = None
         job["events"] = []
     _emit(job, "queued", detail="starting local SAM 2 + phystwin fit")
     thread = threading.Thread(
         target=_run_pipeline,
-        args=(job, body.x, body.y, body.ground_y),
+        args=(job, body.x, body.y, pivot, body.ground_y),
         daemon=True,
     )
     thread.start()

@@ -33,6 +33,11 @@ samples/*.mov
 samples/*.avi
 samples/*.mkv
 samples/*.webm
+samples/**/*.mp4
+samples/**/*.mov
+samples/**/*.avi
+samples/**/*.mkv
+samples/**/*.webm
 
 # Results generated locally (keep .gitkeep)
 results/*

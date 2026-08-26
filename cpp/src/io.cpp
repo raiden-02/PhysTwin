@@ -93,6 +93,26 @@ void write_json_file(const std::filesystem::path& path, const nlohmann::json& j)
 
 }  // namespace
 
+std::string_view model_name(const DynamicsModel model) {
+    switch (model) {
+    case DynamicsModel::projectile_bounce:
+        return "projectile_bounce";
+    case DynamicsModel::pendulum:
+        return "pendulum";
+    }
+    throw std::invalid_argument("unknown dynamics model");
+}
+
+DynamicsModel parse_model(const std::string_view name) {
+    if (name == "projectile_bounce") {
+        return DynamicsModel::projectile_bounce;
+    }
+    if (name == "pendulum") {
+        return DynamicsModel::pendulum;
+    }
+    throw std::invalid_argument("unknown dynamics model: " + std::string(name));
+}
+
 Trajectory load_tracking(const std::filesystem::path& path) {
     const nlohmann::json j = load_json_file(path);
     if (!j.is_object()) {
@@ -111,12 +131,30 @@ Trajectory load_tracking(const std::filesystem::path& path) {
 
     Trajectory traj;
     traj.version = 1;
+    if (j.contains("model")) {
+        traj.model = parse_model(j.at("model").get<std::string>());
+    }
     traj.fps = j.at("fps").get<double>();
     if (j.contains("frame_width")) {
         traj.frame_width = j.at("frame_width").get<int>();
     }
     if (j.contains("frame_height")) {
         traj.frame_height = j.at("frame_height").get<int>();
+    }
+    if (j.contains("reference") && !j.at("reference").is_null()) {
+        const auto& reference = j.at("reference");
+        if (!reference.is_object() || !reference.contains("pivot_x") ||
+            !reference.contains("pivot_y")) {
+            throw std::runtime_error(
+                "tracking.json reference must contain pivot_x and pivot_y");
+        }
+        traj.pivot = ReferencePoint{
+            .x = reference.at("pivot_x").get<double>(),
+            .y = reference.at("pivot_y").get<double>(),
+        };
+    }
+    if (traj.model == DynamicsModel::pendulum && !traj.pivot.has_value()) {
+        throw std::runtime_error("pendulum tracking.json requires a pivot reference");
     }
     traj.observations.reserve(j.at("observations").size());
     for (const auto& item : j.at("observations")) {
@@ -130,13 +168,20 @@ void save_tracking(const Trajectory& trajectory, const std::filesystem::path& pa
     for (const auto& obs : trajectory.observations) {
         observations.push_back(observation_to_json(obs));
     }
-    const nlohmann::json j = {
+    nlohmann::json j = {
         {"version", trajectory.version},
+        {"model", model_name(trajectory.model)},
         {"fps", trajectory.fps},
         {"frame_width", trajectory.frame_width},
         {"frame_height", trajectory.frame_height},
         {"observations", observations},
     };
+    if (trajectory.pivot.has_value()) {
+        j["reference"] = {
+            {"pivot_x", trajectory.pivot->x},
+            {"pivot_y", trajectory.pivot->y},
+        };
+    }
     write_json_file(path, j);
 }
 
@@ -148,6 +193,7 @@ void save_reconstruction(const Reconstruction& reconstruction,
     }
     const nlohmann::json j = {
         {"version", 1},
+        {"model", model_name(DynamicsModel::projectile_bounce)},
         {"parameters",
          {{"vx0", reconstruction.parameters.vx0},
           {"vy0", reconstruction.parameters.vy0},
@@ -179,6 +225,52 @@ void save_reconstruction(const Reconstruction& reconstruction,
           {"search_generations", reconstruction.search_generations},
           {"refinement_iterations", reconstruction.refinement_iterations},
           {"iterations", reconstruction.iterations},
+          {"fit_seconds", reconstruction.fit_seconds}}},
+        {"simulated", simulated},
+    };
+    write_json_file(path, j);
+}
+
+void save_reconstruction(const PendulumReconstruction& reconstruction,
+                         const std::filesystem::path& path) {
+    nlohmann::json simulated = nlohmann::json::array();
+    for (const auto& obs : reconstruction.simulated.observations) {
+        simulated.push_back(observation_to_json(obs));
+    }
+    const nlohmann::json j = {
+        {"version", 1},
+        {"model", model_name(DynamicsModel::pendulum)},
+        {"parameters",
+         {{"omega0", reconstruction.parameters.omega0},
+          {"lambda", reconstruction.parameters.lambda},
+          {"damping", reconstruction.parameters.damping}}},
+        {"environment",
+         {{"pivot_x", reconstruction.environment.pivot_x},
+          {"pivot_y", reconstruction.environment.pivot_y},
+          {"radius", reconstruction.environment.radius},
+          {"theta0", reconstruction.environment.theta0},
+          {"integration_step", reconstruction.environment.integration_step}}},
+        {"units",
+         {{"position", "pixels"},
+          {"time", "seconds"},
+          {"angle", "radians"},
+          {"angular_velocity", "radians_per_second"},
+          {"lambda", "per_second_squared"},
+          {"damping", "per_second"}}},
+        {"metrics",
+         {{"rmse", reconstruction.rmse},
+          {"mae", reconstruction.mae},
+          {"rmse_x", reconstruction.rmse_x},
+          {"rmse_y", reconstruction.rmse_y},
+          {"normalized_rmse", reconstruction.normalized_rmse},
+          {"robust_cost", reconstruction.robust_cost},
+          {"radial_mad", reconstruction.radial_mad},
+          {"angular_span", reconstruction.angular_span},
+          {"pivot_adjustment", reconstruction.pivot_adjustment},
+          {"quality", reconstruction.quality},
+          {"n", reconstruction.n},
+          {"search_generations", reconstruction.search_generations},
+          {"refinement_iterations", reconstruction.refinement_iterations},
           {"fit_seconds", reconstruction.fit_seconds}}},
         {"simulated", simulated},
     };

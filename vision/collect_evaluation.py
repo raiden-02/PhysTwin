@@ -66,6 +66,41 @@ def _parse_synthetic_stdout(text: str) -> dict:
     }
 
 
+def _parse_pendulum_synthetic_stdout(text: str) -> dict:
+    rows = {}
+    for name in ("omega0", "lambda", "damping"):
+        match = re.search(
+            rf"^{name}\s+([-\d.eE+]+)\s+([-\d.eE+]+)\s+([-\d.eE+]+)",
+            text,
+            re.MULTILINE,
+        )
+        if match:
+            rows[name] = {
+                "actual": float(match.group(1)),
+                "recovered": float(match.group(2)),
+                "abs_error": float(match.group(3)),
+            }
+    patterns = {
+        "rmse_px": r"^RMSE:\s+([-\d.eE+]+)",
+        "noisy_outlier_rmse_px": r"^noisy/outlier RMSE:\s+([-\d.eE+]+)",
+        "noisy_lambda": r"^noisy lambda:\s+([-\d.eE+]+)",
+        "noisy_damping": r"^noisy damping:\s+([-\d.eE+]+)",
+        "fit_seconds": r"^fit time:\s+([-\d.eE+]+)",
+    }
+    result = {"parameters": rows}
+    for key, pattern in patterns.items():
+        match = re.search(pattern, text, re.MULTILINE)
+        result[key] = float(match.group(1)) if match else None
+    degenerate = re.search(r"^degenerate_checks:\s+(\d+)", text, re.MULTILINE)
+    generations = re.search(r"^search_generations:\s+(\d+)", text, re.MULTILINE)
+    result["degenerate_checks"] = int(degenerate.group(1)) if degenerate else None
+    result["search_generations"] = (
+        int(generations.group(1)) if generations else None
+    )
+    result["stdout"] = text.strip()
+    return result
+
+
 def _video_case(item: dict) -> dict:
     tracking = _load_json(item.get("tracking"))
     reconstruction = _load_json(item.get("reconstruction"))
@@ -74,15 +109,22 @@ def _video_case(item: dict) -> dict:
         raise FileNotFoundError(
             f"missing tracking/reconstruction for case {item.get('id')}"
         )
-    timing = contact_timing(tracking, reconstruction)
+    model = reconstruction.get("model", tracking.get("model", "projectile_bounce"))
+    timing = (
+        contact_timing(tracking, reconstruction)
+        if model == "projectile_bounce"
+        else None
+    )
     metrics = reconstruction["metrics"]
     parameters = reconstruction["parameters"]
     result = {
         "id": item["id"],
         "title": item["title"],
         "kind": item["kind"],
+        "model": model,
         "video": item.get("video"),
         "point": item.get("point"),
+        "pivot": item.get("pivot"),
         "source": item.get("source"),
         "notes": item.get("notes"),
         "fps": tracking["fps"],
@@ -114,6 +156,7 @@ def _video_case(item: dict) -> dict:
                 "timing_includes", "model_load,init_state,jpeg_decode,propagate"
             ),
             "point": raw.get("point"),
+            "pivot": raw.get("pivot"),
         }
     return result
 
@@ -127,9 +170,14 @@ def main() -> int:
     manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8-sig"))
     cases = []
     for item in manifest["cases"]:
-        if item["kind"] == "cpp_synthetic":
+        if item["kind"] in {"cpp_synthetic", "cpp_pendulum_synthetic"}:
             stdout_path = Path(item["stdout"])
-            parsed = _parse_synthetic_stdout(_read_text(stdout_path))
+            text = _read_text(stdout_path)
+            parsed = (
+                _parse_pendulum_synthetic_stdout(text)
+                if item["kind"] == "cpp_pendulum_synthetic"
+                else _parse_synthetic_stdout(text)
+            )
             cases.append(
                 {
                     "id": item["id"],
@@ -156,7 +204,7 @@ def main() -> int:
     print(f"wrote {output} cases={len(cases)}")
     for case in cases:
         kind = case["kind"]
-        if kind == "cpp_synthetic":
+        if kind in {"cpp_synthetic", "cpp_pendulum_synthetic"}:
             print(f"  {case['id']}: RMSE={case.get('rmse_px')} px")
         else:
             print(

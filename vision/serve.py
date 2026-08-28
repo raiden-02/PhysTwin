@@ -84,10 +84,11 @@ SAMPLE_SPECS = [
         "kind": "cinematic",
         "hint": (
             "Approximate stress footage, not physical validation. Select target "
-            "875,490 and the lower red crane beacon at 1115,663. Tracked anchor "
-            "coverage is 86.5%, but the simple pendulum fit is poor."
+            "820,420 and the lower red crane beacon at 1115,663. Tracked mode "
+            "holds 68 of 90 frames. Tracked RMSE is 33.54 px (fair); fixed-pivot "
+            "RMSE is 123.02 px (poor)."
         ),
-        "suggested_point": [875.0, 490.0],
+        "suggested_point": [820.0, 420.0],
         "suggested_pivot": [1115.0, 663.0],
     },
 ]

@@ -314,7 +314,7 @@ python vision/track.py input.mp4 --point 531,312 --output tracking.json
 python vision/track.py pendulum.mp4 --model pendulum \
   --point 111,858 --pivot 385,92 --output tracking.json
 python vision/track.py cinematic.mp4 --model pendulum --anchor-mode tracked \
-  --point 875,490 --pivot 1115,663 --output tracking.json
+  --point 820,420 --pivot 1115,663 --output tracking.json
 ```
 
 - `inspect` loads the contract and prints a summary

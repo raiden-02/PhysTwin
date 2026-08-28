@@ -5,7 +5,7 @@ param(
     [switch]$SkipTracking,
     [string]$PendulumPoint = "111,858",
     [string]$PendulumPivot = "385,92",
-    [string]$CinematicPoint = "875,490",
+    [string]$CinematicPoint = "820,420",
     [string]$CinematicAnchor = "1115,663"
 )
 
@@ -365,8 +365,8 @@ if ($hasCinematicClip) {
         video = "samples/cinematic/spiderman_swing.mp4"
         point = $CinematicPoint
         pivot = $CinematicAnchor
-        source = "The Amazing Spider-Man (2012), user-provided local clip, 202.75-204.50 s"
-        notes = "Copyrighted cinematic stress case. Fixed-pivot baseline on the same 45 paired frames as tracked mode. Not physical validation."
+        source = "The Amazing Spider-Man (2012), user-provided local clip, 203.00-206.00 s"
+        notes = "Copyrighted cinematic stress case. Fixed-pivot baseline on the same 68 paired frames as tracked mode. Not physical validation."
         tracking = $cinematicFixed.Replace("\", "/")
         tracking_raw = "results/cases/pendulum_cinematic/tracking_tracked_raw.json"
         reconstruction = $cinematicFixedReconstruction.Replace("\", "/")
@@ -381,8 +381,8 @@ if ($hasCinematicClip) {
         video = "samples/cinematic/spiderman_swing.mp4"
         point = $CinematicPoint
         pivot = $CinematicAnchor
-        source = "The Amazing Spider-Man (2012), user-provided local clip, 202.75-204.50 s"
-        notes = "Copyrighted cinematic stress case. Tracks the lower red crane beacon as the visible web attachment reference. Camera rotation, perspective, active body motion, and changing apparent geometry remain unmodeled."
+        source = "The Amazing Spider-Man (2012), user-provided local clip, 203.00-206.00 s"
+        notes = "Copyrighted cinematic stress case. Tracks the lower red crane beacon as the visible web attachment reference. SAM held 68 of 90 frames. Camera rotation, perspective, active body motion, and changing apparent geometry remain unmodeled."
         tracking = $cinematicTracked.Replace("\", "/")
         tracking_raw = "results/cases/pendulum_cinematic/tracking_tracked_raw.json"
         reconstruction = $cinematicTrackedReconstruction.Replace("\", "/")

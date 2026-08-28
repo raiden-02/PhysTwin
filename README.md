@@ -73,14 +73,15 @@ The fixed-camera physical pendulum is 663 frames at 30 fps after trimming the fi
 
 ### Cinematic swing stress case
 
-The user-provided *The Amazing Spider-Man* segment from `202.75 s` to `204.50 s` is 52 frames at 29.97 fps. It is not a real-world correctness claim.
+The user-provided *The Amazing Spider-Man* segment from `203.00 s` to `206.00 s` (`3:23` to `3:26`) is 90 frames at 29.97 fps. It is not a real-world correctness claim.
 
-- SAM 2 tracked Spider-Man in 52 of 52 frames.
-- The lower red crane beacon was usable in 45 frames, for `86.5%` paired anchor coverage.
-- Fixed-pivot baseline on the same 45 frames: `25.24 px RMSE`, `fair`.
-- Tracked-anchor result: `80.71 px RMSE`, `poor`.
+- SAM 2 kept both Spider-Man and the lower red crane beacon in 68 of 90 frames. The last ~22 frames (dive / blur) lost both masks.
+- All 68 valid-target frames had a paired anchor. C++ reports 100% coverage among those frames. Clip-level coverage is 68/90.
+- Frame 0 clicks: target `820,420`, anchor `1115,663`.
+- Tracked-anchor result: `33.54 px RMSE`, `fair`.
+- Fixed-pivot baseline on the same 68 frames: `123.02 px RMSE`, `poor`.
 
-Tracked-anchor compensation makes this shot worse. The camera rotates, perspective changes, Spider-Man moves his body, and the apparent target-to-anchor geometry changes. The simple model only removes shared image-space anchor translation. The fitted cinematic parameters are not physical measurements.
+On this interval, subtracting shared image-space anchor translation beats a frozen click. That is still not a physical measurement. First-frame SAM masks bloated onto sky and buildings, the camera still rotates, perspective changes, and Spider-Man moves his body. The fitted cinematic parameters are not physical measurements.
 
 ## Local UI
 
@@ -188,7 +189,7 @@ The script requires `samples\bounce.mp4`. It also evaluates the physical pendulu
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\run-eval.ps1 `
   -PendulumPoint "111,858" -PendulumPivot "385,92" `
-  -CinematicPoint "875,490" -CinematicAnchor "1115,663"
+  -CinematicPoint "820,420" -CinematicAnchor "1115,663"
 ```
 
 Bounce timing is a high-y local-max heuristic paired within 8 frames. It is an evaluation check, not part of the optimizer.
@@ -255,7 +256,7 @@ Tracked-anchor CLI path:
 ```powershell
 .\.venv\Scripts\python.exe vision\track.py samples\cinematic\spiderman_swing.mp4 `
   --model pendulum --anchor-mode tracked `
-  --point 875,490 --pivot 1115,663 `
+  --point 820,420 --pivot 1115,663 `
   --output results\cases\pendulum_cinematic\tracking_tracked.json
 ```
 

@@ -1,5 +1,5 @@
 {
-  "date": "2026-08-25",
+  "date": "2026-08-28",
   "notes": "Numbers copied from measured reconstruction.json files and synthetic_fit stdout. Re-run scripts/run-eval.ps1 to refresh.",
   "cases": [
     {
@@ -35,8 +35,8 @@
       "search_generations": 160,
       "refinement_iterations": 23,
       "iterations": null,
-      "fit_seconds": 0.0163879,
-      "stdout": "synthetic parameter recovery\r\nparameter     actual       recovered      abs_error\r\nvx0           180          180          2.84217e-14\r\nvy0           -420         -420         1.54178e-07\r\ng             980          980          2.50759e-06\r\ne             0.72         0.72         7.91809e-10\r\nRMSE: 9.01143e-07 px\r\nMAE: 5.99064e-07 px\r\nperturbed RMSE: 65.7512 px\r\nsearch_generations: 160\r\nrefinement_iterations: 23\r\nfit time: 0.0163879 s"
+      "fit_seconds": 0.0157908,
+      "stdout": "synthetic parameter recovery\r\nparameter     actual       recovered      abs_error\r\nvx0           180          180          2.84217e-14\r\nvy0           -420         -420         1.54178e-07\r\ng             980          980          2.50759e-06\r\ne             0.72         0.72         7.91809e-10\r\nRMSE: 9.01143e-07 px\r\nMAE: 5.99064e-07 px\r\nperturbed RMSE: 65.7512 px\r\nsearch_generations: 160\r\nrefinement_iterations: 23\r\nfit time: 0.0157908 s"
     },
     {
       "id": "pendulum_synthetic",
@@ -66,10 +66,10 @@
       "noisy_outlier_rmse_px": 2.62899,
       "noisy_lambda": 7.19915,
       "noisy_damping": 0.217734,
-      "fit_seconds": 0.321877,
+      "fit_seconds": 0.310218,
       "degenerate_checks": 8,
       "search_generations": 220,
-      "stdout": "pendulum synthetic recovery\r\nparameter     actual       recovered      abs_error\r\nomega0        -0.35        -0.35          2.92155e-12\r\nlambda        7.2          7.2          6.2883e-13\r\ndamping       0.22         0.22          1.876e-13\r\nRMSE: 1.29064e-10 px\r\nmoving-camera RMSE: 2.49329e-11 px\r\nmoving-camera lambda: 7.2\r\nnoisy/outlier RMSE: 2.62899 px\r\nnoisy lambda: 7.19915\r\nnoisy damping: 0.217734\r\nfast lambda: 32\r\nfast RMSE: 5.84139e-12 px\r\ndegenerate_checks: 8\r\nsearch_generations: 220\r\nfit time: 0.321877 s"
+      "stdout": "pendulum synthetic recovery\r\nparameter     actual       recovered      abs_error\r\nomega0        -0.35        -0.35          2.92155e-12\r\nlambda        7.2          7.2          6.2883e-13\r\ndamping       0.22         0.22          1.876e-13\r\nRMSE: 1.29064e-10 px\r\nmoving-camera RMSE: 2.49329e-11 px\r\nmoving-camera lambda: 7.2\r\nnoisy/outlier RMSE: 2.62899 px\r\nnoisy lambda: 7.19915\r\nnoisy damping: 0.217734\r\nfast lambda: 32\r\nfast RMSE: 5.84139e-12 px\r\ndegenerate_checks: 8\r\nsearch_generations: 220\r\nfit time: 0.310218 s"
     },
     {
       "id": "mixkit_tennis",
@@ -94,7 +94,7 @@
         "vy0": 706.5406915873825
       },
       "metrics": {
-        "fit_seconds": 0.0182978,
+        "fit_seconds": 0.017969,
         "ground_source": "max_observed_centroid_y",
         "ground_violation": 0.0,
         "iterations": 183,
@@ -185,7 +185,7 @@
         "vy0": 646.6439241065198
       },
       "metrics": {
-        "fit_seconds": 0.0181499,
+        "fit_seconds": 0.0181072,
         "ground_source": "explicit",
         "ground_violation": 108.99288662145625,
         "iterations": 185,
@@ -272,7 +272,7 @@
         "vy0": 20.77061756813787
       },
       "metrics": {
-        "fit_seconds": 0.0365779,
+        "fit_seconds": 0.0339973,
         "ground_source": "max_observed_centroid_y",
         "ground_violation": 0.0,
         "iterations": 183,
@@ -387,7 +387,7 @@
         "vy0": 49.74176644012113
       },
       "metrics": {
-        "fit_seconds": 0.0356278,
+        "fit_seconds": 0.0338083,
         "ground_source": "max_observed_centroid_y",
         "ground_violation": 0.0,
         "iterations": 183,
@@ -522,7 +522,7 @@
       "metrics": {
         "anchor_track_coverage": 1.0,
         "angular_span": 0.6749181096989729,
-        "fit_seconds": 1.6513327,
+        "fit_seconds": 1.6330287,
         "mae": 3.196913232122214,
         "n": 663,
         "normalized_rmse": 0.004854447288247539,
@@ -568,36 +568,36 @@
       "kind": "cinematic_stress_video",
       "model": "pendulum",
       "video": "samples/cinematic/spiderman_swing.mp4",
-      "point": "875,490",
+      "point": "820,420",
       "pivot": "1115,663",
-      "source": "The Amazing Spider-Man (2012), user-provided local clip, 202.75-204.50 s",
-      "notes": "Copyrighted cinematic stress case. Fixed-pivot baseline on the same 45 paired frames as tracked mode. Not physical validation.",
+      "source": "The Amazing Spider-Man (2012), user-provided local clip, 203.00-206.00 s",
+      "notes": "Copyrighted cinematic stress case. Fixed-pivot baseline on the same 68 paired frames as tracked mode. Not physical validation.",
       "fps": 29.97002997002997,
       "frame_width": 1920,
       "frame_height": 1080,
-      "n_observations": 45,
+      "n_observations": 68,
       "anchor_mode": "fixed",
       "anchor_observations": 0,
       "parameters": {
-        "damping": 1.6856581456002693,
-        "lambda": 1.386307655867791,
-        "omega0": -0.1997714832780444
+        "damping": 3.6969452048400826,
+        "lambda": 0.05000000000000002,
+        "omega0": 0.1872441591617342
       },
       "metrics": {
         "anchor_track_coverage": 1.0,
-        "angular_span": 0.46928380989571816,
-        "fit_seconds": 0.1863488,
-        "mae": 22.62225117256298,
-        "n": 45,
-        "normalized_rmse": 0.08063034390727504,
-        "pivot_adjustment": 25.675747049967324,
-        "quality": "fair",
-        "radial_mad": 13.940678999975319,
+        "angular_span": 0.3922315117192898,
+        "fit_seconds": 0.2793486,
+        "mae": 87.9783579259859,
+        "n": 68,
+        "normalized_rmse": 0.26340684163162914,
+        "pivot_adjustment": 0.0,
+        "quality": "poor",
+        "radial_mad": 35.125849663430785,
         "refinement_iterations": 19,
-        "rmse": 25.241696900581537,
-        "rmse_x": 18.74155321314656,
-        "rmse_y": 16.908502168424725,
-        "robust_cost": 44.99248754142023,
+        "rmse": 123.01951539583374,
+        "rmse_x": 108.93280601139692,
+        "rmse_y": 57.16156875654433,
+        "robust_cost": 239.36077255224126,
         "search_generations": 220
       },
       "contact_timing": null,
@@ -611,23 +611,23 @@
       },
       "tracking_runtime": {
         "device": "NVIDIA GeForce RTX 4080 SUPER",
-        "n_frames": 52,
-        "skipped_empty_masks": 0,
-        "end_to_end_seconds": 6.425363200018182,
-        "end_to_end_fps": 8.092927727393349,
+        "n_frames": 90,
+        "skipped_empty_masks": 22,
+        "end_to_end_seconds": 13.367842799983919,
+        "end_to_end_fps": 6.7325746828881226,
         "timing_includes": "model_load,init_state,jpeg_decode,propagate",
         "point": [
-          875.0,
-          490.0
+          820.0,
+          420.0
         ],
         "pivot": [
           1115.0,
           663.0
         ],
-        "skipped_anchor_masks": 7,
-        "anchor_valid_masks": 45,
-        "paired_frames": 45,
-        "anchor_coverage": 0.8653846153846154
+        "skipped_anchor_masks": 22,
+        "anchor_valid_masks": 68,
+        "paired_frames": 68,
+        "anchor_coverage": 1.0
       }
     },
     {
@@ -636,36 +636,36 @@
       "kind": "cinematic_stress_video",
       "model": "pendulum",
       "video": "samples/cinematic/spiderman_swing.mp4",
-      "point": "875,490",
+      "point": "820,420",
       "pivot": "1115,663",
-      "source": "The Amazing Spider-Man (2012), user-provided local clip, 202.75-204.50 s",
-      "notes": "Copyrighted cinematic stress case. Tracks the lower red crane beacon as the visible web attachment reference. Camera rotation, perspective, active body motion, and changing apparent geometry remain unmodeled.",
+      "source": "The Amazing Spider-Man (2012), user-provided local clip, 203.00-206.00 s",
+      "notes": "Copyrighted cinematic stress case. Tracks the lower red crane beacon as the visible web attachment reference. SAM held 68 of 90 frames. Camera rotation, perspective, active body motion, and changing apparent geometry remain unmodeled.",
       "fps": 29.97002997002997,
       "frame_width": 1920,
       "frame_height": 1080,
-      "n_observations": 45,
+      "n_observations": 68,
       "anchor_mode": "tracked",
-      "anchor_observations": 45,
+      "anchor_observations": 68,
       "parameters": {
-        "damping": 1.4791264644130855,
-        "lambda": 3.5984664800869854,
-        "omega0": -0.7302197850912114
+        "damping": 2.4552202555210876,
+        "lambda": 0.05,
+        "omega0": 0.19028603196159555
       },
       "metrics": {
-        "anchor_track_coverage": 0.8653846153846154,
-        "angular_span": 1.4024401503264357,
-        "fit_seconds": 0.1822843,
-        "mae": 50.20435819178285,
-        "n": 45,
-        "normalized_rmse": 0.1883470687327933,
+        "anchor_track_coverage": 1.0,
+        "angular_span": 0.17377700518002204,
+        "fit_seconds": 0.2781495,
+        "mae": 22.303615572957415,
+        "n": 68,
+        "normalized_rmse": 0.06313377259727176,
         "pivot_adjustment": 0.0,
-        "quality": "poor",
-        "radial_mad": 15.111825288068928,
+        "quality": "fair",
+        "radial_mad": 3.7513179459518255,
         "refinement_iterations": 19,
-        "rmse": 80.70667711959231,
-        "rmse_x": 63.48293156137834,
-        "rmse_y": 49.83457767513919,
-        "robust_cost": 41.271819287327396,
+        "rmse": 33.54089808369705,
+        "rmse_x": 31.63432326772054,
+        "rmse_y": 11.147261352202474,
+        "robust_cost": 43.82906660698609,
         "search_generations": 220
       },
       "contact_timing": null,
@@ -679,23 +679,23 @@
       },
       "tracking_runtime": {
         "device": "NVIDIA GeForce RTX 4080 SUPER",
-        "n_frames": 52,
-        "skipped_empty_masks": 0,
-        "end_to_end_seconds": 6.425363200018182,
-        "end_to_end_fps": 8.092927727393349,
+        "n_frames": 90,
+        "skipped_empty_masks": 22,
+        "end_to_end_seconds": 13.367842799983919,
+        "end_to_end_fps": 6.7325746828881226,
         "timing_includes": "model_load,init_state,jpeg_decode,propagate",
         "point": [
-          875.0,
-          490.0
+          820.0,
+          420.0
         ],
         "pivot": [
           1115.0,
           663.0
         ],
-        "skipped_anchor_masks": 7,
-        "anchor_valid_masks": 45,
-        "paired_frames": 45,
-        "anchor_coverage": 0.8653846153846154
+        "skipped_anchor_masks": 22,
+        "anchor_valid_masks": 68,
+        "paired_frames": 68,
+        "anchor_coverage": 1.0
       }
     }
   ]

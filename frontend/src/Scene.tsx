@@ -33,6 +33,7 @@ export function ReconstructionScene({ video, tracking, reconstruction, time }: P
   const ballRef = useRef<THREE.Mesh | null>(null);
   const obsBallRef = useRef<THREE.Mesh | null>(null);
   const rodRef = useRef<THREE.Line | null>(null);
+  const pivotRef = useRef<THREE.Mesh | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
   useEffect(() => {
@@ -95,17 +96,26 @@ export function ReconstructionScene({ video, tracking, reconstruction, time }: P
     } else {
       const { pivot_x: pivotX, pivot_y: pivotY, radius: swingRadius } =
         reconstruction.environment;
+      const anchorPath = reconstruction.environment.anchor_path;
+      const firstAnchor =
+        reconstruction.environment.reference_mode === "tracked" && anchorPath.length > 0
+          ? anchorPath[0]
+          : { x: pivotX, y: pivotY };
       const pivot = new THREE.Mesh(
         new THREE.SphereGeometry(Math.max(6, Math.min(16, swingRadius * 0.04)), 20, 12),
         new THREE.MeshBasicMaterial({ color: "#f2d96b" }),
       );
-      pivot.position.set(pivotX, -pivotY, 3.2);
+      pivot.position.set(firstAnchor.x, -firstAnchor.y, 3.2);
       scene.add(pivot);
+      pivotRef.current = pivot;
+      if (anchorPath.length > 1) {
+        scene.add(lineFromPoints(anchorPath, "#f2d96b", 1.0));
+      }
 
       const first = reconstruction.simulated[0];
       const rod = lineFromPoints(
         [
-          { x: pivotX, y: pivotY },
+          { x: firstAnchor.x, y: firstAnchor.y },
           { x: first.x, y: first.y },
         ],
         "#d5d9de",
@@ -175,6 +185,7 @@ export function ReconstructionScene({ video, tracking, reconstruction, time }: P
       ballRef.current = null;
       obsBallRef.current = null;
       rodRef.current = null;
+      pivotRef.current = null;
     };
   }, [video, tracking, reconstruction]);
 
@@ -193,13 +204,23 @@ export function ReconstructionScene({ video, tracking, reconstruction, time }: P
       obsBallRef.current.position.set(obs.x, -obs.y, 2.6);
     }
     if (rodRef.current && reconstruction.model === "pendulum") {
+      const anchor =
+        reconstruction.environment.reference_mode === "tracked"
+          ? interpolate(reconstruction.environment.anchor_path, time)
+          : {
+              x: reconstruction.environment.pivot_x,
+              y: reconstruction.environment.pivot_y,
+            };
+      if (pivotRef.current) {
+        pivotRef.current.position.set(anchor.x, -anchor.y, 3.2);
+      }
       const positions = rodRef.current.geometry.getAttribute(
         "position",
       ) as THREE.BufferAttribute;
       positions.setXYZ(
         0,
-        reconstruction.environment.pivot_x,
-        -reconstruction.environment.pivot_y,
+        anchor.x,
+        -anchor.y,
         2.2,
       );
       positions.setXYZ(1, sim.x, -sim.y, 2.2);

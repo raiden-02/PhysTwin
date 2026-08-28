@@ -24,6 +24,7 @@ struct Geometry {
     double radius = 0.0;
     double radial_mad = 0.0;
     std::vector<double> angles;
+    std::vector<ReferencePoint> anchor_path;
 };
 
 struct Bounds {
@@ -78,6 +79,33 @@ void validate_observed(const Trajectory& observed) {
                 "observation times must be strictly increasing");
         }
     }
+    if (observed.anchor_mode == AnchorMode::tracked) {
+        if (observed.anchor_observations.size() !=
+            observed.observations.size()) {
+            throw std::invalid_argument(
+                "tracked pendulum target and anchor observations must be frame-aligned");
+        }
+        if (observed.anchor_track_coverage.has_value() &&
+            (!std::isfinite(*observed.anchor_track_coverage) ||
+             *observed.anchor_track_coverage < 0.6 ||
+             *observed.anchor_track_coverage > 1.0)) {
+            throw std::invalid_argument(
+                "tracked pendulum anchor coverage must be at least 60%");
+        }
+        for (std::size_t i = 0; i < observed.anchor_observations.size(); ++i) {
+            const auto& anchor = observed.anchor_observations[i];
+            if (!std::isfinite(anchor.t) || !std::isfinite(anchor.x) ||
+                !std::isfinite(anchor.y)) {
+                throw std::invalid_argument(
+                    "anchor observations must contain finite t, x, and y");
+            }
+            if (anchor.frame != observed.observations[i].frame ||
+                std::abs(anchor.t - observed.observations[i].t) > 1e-9) {
+                throw std::invalid_argument(
+                    "tracked pendulum target and anchor observations must be frame-aligned");
+            }
+        }
+    }
     const double duration =
         observed.observations.back().t - observed.observations.front().t;
     if (duration < 0.25) {
@@ -118,6 +146,44 @@ Geometry geometry_for(const Trajectory& observed, const ReferencePoint pivot) {
         .radius = radius,
         .radial_mad = median(deviations),
         .angles = std::move(angles),
+    };
+}
+
+Geometry geometry_for_tracked(const Trajectory& observed) {
+    std::vector<double> distances;
+    std::vector<double> angles;
+    std::vector<ReferencePoint> anchors;
+    distances.reserve(observed.observations.size());
+    angles.reserve(observed.observations.size());
+    anchors.reserve(observed.observations.size());
+    for (std::size_t i = 0; i < observed.observations.size(); ++i) {
+        const auto& point = observed.observations[i];
+        const auto& anchor = observed.anchor_observations[i];
+        distances.push_back(std::hypot(point.x - anchor.x, point.y - anchor.y));
+        anchors.push_back({anchor.x, anchor.y});
+        double angle = std::atan2(point.x - anchor.x, point.y - anchor.y);
+        if (!angles.empty()) {
+            while (angle - angles.back() > kPi) {
+                angle -= 2.0 * kPi;
+            }
+            while (angle - angles.back() < -kPi) {
+                angle += 2.0 * kPi;
+            }
+        }
+        angles.push_back(angle);
+    }
+    const double radius = median(distances);
+    std::vector<double> deviations;
+    deviations.reserve(distances.size());
+    for (const double distance : distances) {
+        deviations.push_back(std::abs(distance - radius));
+    }
+    return {
+        .pivot = anchors.front(),
+        .radius = radius,
+        .radial_mad = median(deviations),
+        .angles = std::move(angles),
+        .anchor_path = std::move(anchors),
     };
 }
 
@@ -253,7 +319,13 @@ std::string classify(const double normalized_rmse) {
 PendulumReconstruction PendulumFitter::fit(const Trajectory& observed) const {
     validate_observed(observed);
     const auto start = std::chrono::steady_clock::now();
-    const Geometry geometry = refine_geometry(observed);
+    const Geometry geometry = observed.anchor_mode == AnchorMode::tracked
+                                  ? geometry_for_tracked(observed)
+                                  : refine_geometry(observed);
+    if (geometry.radius < 5.0) {
+        throw std::invalid_argument(
+            "pendulum radius is below 5 px; pivot and target are too close");
+    }
     if (geometry.radial_mad > std::max(3.0, 0.15 * geometry.radius)) {
         throw std::invalid_argument(
             "unusable pivot relationship: target distance from pivot varies too much");
@@ -322,6 +394,8 @@ PendulumReconstruction PendulumFitter::fit(const Trajectory& observed) const {
         .radius = geometry.radius,
         .theta0 = geometry.angles.front(),
         .integration_step = std::min(1.0 / 240.0, 1.0 / observed.fps / 4.0),
+        .anchor_mode = observed.anchor_mode,
+        .anchor_path = geometry.anchor_path,
     };
     const double huber_delta = std::max(2.0, 0.02 * geometry.radius);
     const PendulumSimulator simulator;
@@ -440,10 +514,18 @@ PendulumReconstruction PendulumFitter::fit(const Trajectory& observed) const {
     reconstruction.simulated.fps = observed.fps;
     reconstruction.simulated.frame_width = observed.frame_width;
     reconstruction.simulated.frame_height = observed.frame_height;
+    reconstruction.simulated.anchor_track_coverage =
+        observed.anchor_track_coverage;
     for (std::size_t i = 0; i < reconstruction.simulated.observations.size(); ++i) {
         reconstruction.simulated.observations[i].frame =
             observed.observations[i].frame;
         reconstruction.simulated.observations[i].t = observed.observations[i].t;
+        if (observed.anchor_mode == AnchorMode::tracked) {
+            reconstruction.simulated.anchor_observations[i].frame =
+                observed.anchor_observations[i].frame;
+            reconstruction.simulated.anchor_observations[i].t =
+                observed.anchor_observations[i].t;
+        }
     }
     reconstruction.rmse = rmse(observed, reconstruction.simulated);
     reconstruction.mae = mae(observed, reconstruction.simulated);
@@ -468,8 +550,12 @@ PendulumReconstruction PendulumFitter::fit(const Trajectory& observed) const {
     reconstruction.radial_mad = geometry.radial_mad;
     reconstruction.angular_span = angular_span;
     reconstruction.pivot_adjustment =
-        std::hypot(geometry.pivot.x - observed.pivot->x,
-                   geometry.pivot.y - observed.pivot->y);
+        observed.anchor_mode == AnchorMode::fixed
+            ? std::hypot(geometry.pivot.x - observed.pivot->x,
+                         geometry.pivot.y - observed.pivot->y)
+            : 0.0;
+    reconstruction.anchor_track_coverage =
+        observed.anchor_track_coverage.value_or(1.0);
     reconstruction.quality = classify(reconstruction.normalized_rmse);
     if (geometry.radial_mad > 0.08 * geometry.radius &&
         reconstruction.quality == "good") {

@@ -2,6 +2,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cmath>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -113,6 +114,26 @@ DynamicsModel parse_model(const std::string_view name) {
     throw std::invalid_argument("unknown dynamics model: " + std::string(name));
 }
 
+std::string_view anchor_mode_name(const AnchorMode mode) {
+    switch (mode) {
+    case AnchorMode::fixed:
+        return "fixed";
+    case AnchorMode::tracked:
+        return "tracked";
+    }
+    throw std::invalid_argument("unknown anchor mode");
+}
+
+AnchorMode parse_anchor_mode(const std::string_view name) {
+    if (name == "fixed") {
+        return AnchorMode::fixed;
+    }
+    if (name == "tracked") {
+        return AnchorMode::tracked;
+    }
+    throw std::invalid_argument("unknown anchor mode: " + std::string(name));
+}
+
 Trajectory load_tracking(const std::filesystem::path& path) {
     const nlohmann::json j = load_json_file(path);
     if (!j.is_object()) {
@@ -148,10 +169,23 @@ Trajectory load_tracking(const std::filesystem::path& path) {
             throw std::runtime_error(
                 "tracking.json reference must contain pivot_x and pivot_y");
         }
+        if (reference.contains("mode")) {
+            traj.anchor_mode =
+                parse_anchor_mode(reference.at("mode").get<std::string>());
+        }
         traj.pivot = ReferencePoint{
             .x = reference.at("pivot_x").get<double>(),
             .y = reference.at("pivot_y").get<double>(),
         };
+        if (reference.contains("coverage") && !reference.at("coverage").is_null()) {
+            traj.anchor_track_coverage = reference.at("coverage").get<double>();
+            if (!std::isfinite(*traj.anchor_track_coverage) ||
+                *traj.anchor_track_coverage < 0.0 ||
+                *traj.anchor_track_coverage > 1.0) {
+                throw std::runtime_error(
+                    "tracking.json reference.coverage must be between 0 and 1");
+            }
+        }
     }
     if (traj.model == DynamicsModel::pendulum && !traj.pivot.has_value()) {
         throw std::runtime_error("pendulum tracking.json requires a pivot reference");
@@ -159,6 +193,34 @@ Trajectory load_tracking(const std::filesystem::path& path) {
     traj.observations.reserve(j.at("observations").size());
     for (const auto& item : j.at("observations")) {
         traj.observations.push_back(observation_from_json(item));
+    }
+    if (j.contains("anchor_observations")) {
+        if (!j.at("anchor_observations").is_array()) {
+            throw std::runtime_error(
+                "tracking.json anchor_observations must be an array");
+        }
+        traj.anchor_observations.reserve(j.at("anchor_observations").size());
+        for (const auto& item : j.at("anchor_observations")) {
+            traj.anchor_observations.push_back(observation_from_json(item));
+        }
+    }
+    if (traj.anchor_mode == AnchorMode::tracked) {
+        if (traj.anchor_observations.size() < 12) {
+            throw std::runtime_error(
+                "tracked pendulum requires at least 12 anchor observations");
+        }
+        if (traj.anchor_observations.size() != traj.observations.size()) {
+            throw std::runtime_error(
+                "tracked pendulum target and anchor observations must be frame-aligned");
+        }
+        for (std::size_t i = 0; i < traj.observations.size(); ++i) {
+            if (traj.observations[i].frame != traj.anchor_observations[i].frame ||
+                std::abs(traj.observations[i].t -
+                         traj.anchor_observations[i].t) > 1e-9) {
+                throw std::runtime_error(
+                    "tracked pendulum target and anchor observations must be frame-aligned");
+            }
+        }
     }
     return traj;
 }
@@ -178,9 +240,20 @@ void save_tracking(const Trajectory& trajectory, const std::filesystem::path& pa
     };
     if (trajectory.pivot.has_value()) {
         j["reference"] = {
+            {"mode", anchor_mode_name(trajectory.anchor_mode)},
             {"pivot_x", trajectory.pivot->x},
             {"pivot_y", trajectory.pivot->y},
         };
+        if (trajectory.anchor_track_coverage.has_value()) {
+            j["reference"]["coverage"] = *trajectory.anchor_track_coverage;
+        }
+    }
+    if (!trajectory.anchor_observations.empty()) {
+        nlohmann::json anchors = nlohmann::json::array();
+        for (const auto& obs : trajectory.anchor_observations) {
+            anchors.push_back(observation_to_json(obs));
+        }
+        j["anchor_observations"] = std::move(anchors);
     }
     write_json_file(path, j);
 }
@@ -237,6 +310,10 @@ void save_reconstruction(const PendulumReconstruction& reconstruction,
     for (const auto& obs : reconstruction.simulated.observations) {
         simulated.push_back(observation_to_json(obs));
     }
+    nlohmann::json anchor_path = nlohmann::json::array();
+    for (const auto& obs : reconstruction.simulated.anchor_observations) {
+        anchor_path.push_back(observation_to_json(obs));
+    }
     const nlohmann::json j = {
         {"version", 1},
         {"model", model_name(DynamicsModel::pendulum)},
@@ -249,7 +326,10 @@ void save_reconstruction(const PendulumReconstruction& reconstruction,
           {"pivot_y", reconstruction.environment.pivot_y},
           {"radius", reconstruction.environment.radius},
           {"theta0", reconstruction.environment.theta0},
-          {"integration_step", reconstruction.environment.integration_step}}},
+          {"integration_step", reconstruction.environment.integration_step},
+          {"reference_mode",
+           anchor_mode_name(reconstruction.environment.anchor_mode)},
+          {"anchor_path", anchor_path}}},
         {"units",
          {{"position", "pixels"},
           {"time", "seconds"},
@@ -267,6 +347,7 @@ void save_reconstruction(const PendulumReconstruction& reconstruction,
           {"radial_mad", reconstruction.radial_mad},
           {"angular_span", reconstruction.angular_span},
           {"pivot_adjustment", reconstruction.pivot_adjustment},
+          {"anchor_track_coverage", reconstruction.anchor_track_coverage},
           {"quality", reconstruction.quality},
           {"n", reconstruction.n},
           {"search_generations", reconstruction.search_generations},

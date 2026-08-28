@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """SAM 2 video tracking worker.
 
-Reads one click on frame 0, propagates the mask on CUDA, writes tracking.json.
+Reads target and optional anchor clicks on frame 0, propagates masks on CUDA,
+and writes tracking.json.
 """
 
 from __future__ import annotations
@@ -20,7 +21,11 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from trajectory import geometry_from_mask, observation_from_geometry
+from trajectory import (
+    geometry_from_mask,
+    observation_from_geometry,
+    pair_target_and_anchor,
+)
 
 
 DEFAULT_CHECKPOINT = Path("checkpoints") / "sam2.1_hiera_tiny.pt"
@@ -138,6 +143,8 @@ def write_preview(
     observations: list[dict],
     output: Path,
     prompt: tuple[float, float],
+    anchor_observations: list[dict] | None = None,
+    anchor_prompt: tuple[float, float] | None = None,
 ) -> None:
     import matplotlib
 
@@ -163,11 +170,22 @@ def write_preview(
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
     axes[0].imshow(first_rgb)
     axes[0].scatter([prompt[0]], [prompt[1]], c="lime", s=40, marker="+")
+    if anchor_prompt is not None:
+        axes[0].scatter(
+            [anchor_prompt[0]], [anchor_prompt[1]], c="gold", s=40, marker="+"
+        )
     axes[0].set_title("frame 0 + click")
     axes[0].axis("off")
 
     axes[1].imshow(last_rgb)
     axes[1].plot(xs, ys, color="cyan", linewidth=1.5)
+    if anchor_observations:
+        axes[1].plot(
+            [obs["x"] for obs in anchor_observations],
+            [obs["y"] for obs in anchor_observations],
+            color="gold",
+            linewidth=1.2,
+        )
     axes[1].scatter(xs[-1], ys[-1], c="red", s=20)
     axes[1].set_title(f"last tracked frame {last_idx}")
     axes[1].axis("off")
@@ -198,6 +216,7 @@ def track(
     on_progress: ProgressFn | None = None,
     model: str = "projectile_bounce",
     pivot: tuple[float, float] | None = None,
+    anchor_mode: str = "fixed",
 ) -> dict:
     def emit(stage: str, **info: object) -> None:
         if on_progress is not None:
@@ -205,6 +224,10 @@ def track(
 
     if model not in {"projectile_bounce", "pendulum"}:
         raise ValueError(f"unknown dynamics model: {model}")
+    if anchor_mode not in {"fixed", "tracked"}:
+        raise ValueError(f"unknown anchor mode: {anchor_mode}")
+    if model != "pendulum" and anchor_mode != "fixed":
+        raise ValueError("tracked anchor mode is only valid for pendulum")
     if model == "pendulum" and pivot is None:
         raise ValueError("pendulum tracking requires a pivot x,y")
     require_cuda()
@@ -243,30 +266,71 @@ def track(
                 points=points,
                 labels=labels,
             )
+            if anchor_mode == "tracked":
+                assert pivot is not None
+                anchor_points = np.array([[pivot[0], pivot[1]]], dtype=np.float32)
+                predictor.add_new_points_or_box(
+                    inference_state=state,
+                    frame_idx=0,
+                    obj_id=2,
+                    points=anchor_points,
+                    labels=labels,
+                )
 
             raw_rows: list[dict] = []
-            observations: list[dict] = []
-            skipped = 0
+            target_rows: list[dict] = []
+            anchor_rows: list[dict] = []
+            skipped_target = 0
+            skipped_anchor = 0
             emit("tracking", current=0, total=n_frames)
-            for frame_idx, _obj_ids, mask_logits in predictor.propagate_in_video(state):
-                logits = mask_logits[0].detach().float().cpu().numpy()
-                binary = np.squeeze(logits) > 0.0
-                geometry = geometry_from_mask(binary)
-                conf = mask_confidence(np.squeeze(logits), binary) if geometry else 0.0
-                raw_rows.append(
-                    {
-                        "frame": int(frame_idx),
+            for frame_idx, obj_ids, mask_logits in predictor.propagate_in_video(state):
+                frame_raw: dict[str, object] = {"frame": int(frame_idx), "objects": {}}
+                objects = frame_raw["objects"]
+                assert isinstance(objects, dict)
+                seen_ids: set[int] = set()
+                for index, raw_obj_id in enumerate(obj_ids):
+                    obj_id = (
+                        int(raw_obj_id.item())
+                        if hasattr(raw_obj_id, "item")
+                        else int(raw_obj_id)
+                    )
+                    seen_ids.add(obj_id)
+                    logits = mask_logits[index].detach().float().cpu().numpy()
+                    binary = np.squeeze(logits) > 0.0
+                    geometry = geometry_from_mask(binary)
+                    conf = (
+                        mask_confidence(np.squeeze(logits), binary) if geometry else 0.0
+                    )
+                    objects[str(obj_id)] = {
                         "empty": geometry is None,
                         "confidence": conf,
                         "area": 0.0 if geometry is None else geometry["area"],
                     }
-                )
-                if geometry is None:
-                    skipped += 1
-                else:
-                    observations.append(
-                        observation_from_geometry(int(frame_idx), fps, geometry, conf)
-                    )
+                    if obj_id == 1:
+                        if geometry is None:
+                            skipped_target += 1
+                        else:
+                            target_rows.append(
+                                observation_from_geometry(
+                                    int(frame_idx), fps, geometry, conf
+                                )
+                            )
+                    elif obj_id == 2:
+                        if geometry is None:
+                            skipped_anchor += 1
+                        else:
+                            anchor_rows.append(
+                                observation_from_geometry(
+                                    int(frame_idx), fps, geometry, conf
+                                )
+                            )
+                if 1 not in seen_ids:
+                    skipped_target += 1
+                    objects["1"] = {"empty": True, "confidence": 0.0, "area": 0.0}
+                if anchor_mode == "tracked" and 2 not in seen_ids:
+                    skipped_anchor += 1
+                    objects["2"] = {"empty": True, "confidence": 0.0, "area": 0.0}
+                raw_rows.append(frame_raw)
                 if on_progress and (
                     frame_idx == 0
                     or (frame_idx + 1) % 5 == 0
@@ -276,20 +340,36 @@ def track(
                         "tracking",
                         current=int(frame_idx) + 1,
                         total=n_frames,
-                        skipped=skipped,
+                        skipped=skipped_target,
+                        anchor_skipped=skipped_anchor,
                     )
+            observations = target_rows
+            anchor_observations: list[dict] = []
+            anchor_coverage: float | None = None
+            if anchor_mode == "tracked":
+                assert pivot is not None
+                observations, anchor_observations, anchor_coverage = (
+                    pair_target_and_anchor(target_rows, anchor_rows, pivot)
+                )
         elapsed = time.perf_counter() - start
         infer_fps = n_frames / elapsed if elapsed > 0 else 0.0
         print(
-            f"tracked {len(observations)}/{n_frames} frames in {elapsed:.2f}s "
+            f"tracked target {len(target_rows)}/{n_frames}, paired "
+            f"{len(observations)}/{len(target_rows)} in {elapsed:.2f}s "
             f"end-to-end ({infer_fps:.1f} FPS including model load, JPEG decode, "
-            f"and propagation), skipped {skipped} empty masks",
+            f"and propagation), skipped target={skipped_target} "
+            f"anchor={skipped_anchor} empty masks",
             file=sys.stderr,
         )
         if not observations:
             raise RuntimeError("SAM 2 produced no valid masks. Try a different --point.")
 
-        emit("writing_tracking", n=len(observations), skipped=skipped)
+        emit(
+            "writing_tracking",
+            n=len(observations),
+            skipped=skipped_target,
+            anchor_skipped=skipped_anchor,
+        )
         payload = {
             "version": 1,
             "model": model,
@@ -300,9 +380,14 @@ def track(
         }
         if pivot is not None:
             payload["reference"] = {
+                "mode": anchor_mode,
                 "pivot_x": pivot[0],
                 "pivot_y": pivot[1],
             }
+            if anchor_coverage is not None:
+                payload["reference"]["coverage"] = anchor_coverage
+        if anchor_observations:
+            payload["anchor_observations"] = anchor_observations
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
@@ -312,10 +397,16 @@ def track(
                 {
                     "video": str(video),
                     "model": model,
+                    "anchor_mode": anchor_mode,
                     "point": [point[0], point[1]],
                     "pivot": None if pivot is None else [pivot[0], pivot[1]],
                     "n_frames": n_frames,
-                    "skipped_empty_masks": skipped,
+                    "target_valid_masks": len(target_rows),
+                    "anchor_valid_masks": len(anchor_rows),
+                    "paired_frames": len(observations),
+                    "anchor_coverage": anchor_coverage,
+                    "skipped_empty_masks": skipped_target,
+                    "skipped_anchor_masks": skipped_anchor,
                     "end_to_end_seconds": elapsed,
                     "end_to_end_fps": infer_fps,
                     "timing_includes": "model_load,init_state,jpeg_decode,propagate",
@@ -333,7 +424,14 @@ def track(
         print(f"wrote raw log {raw_path}", file=sys.stderr)
 
         if viz is not None:
-            write_preview(frame_dir, observations, viz, point)
+            write_preview(
+                frame_dir,
+                observations,
+                viz,
+                point,
+                anchor_observations,
+                pivot if anchor_mode == "tracked" else None,
+            )
             print(f"wrote preview {viz}", file=sys.stderr)
         return payload
     finally:
@@ -343,7 +441,7 @@ def track(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Track one object in a video and write tracking.json"
+        description="Track a target and optional moving anchor, then write tracking.json"
     )
     parser.add_argument("video", help="input video path")
     parser.add_argument(
@@ -360,7 +458,13 @@ def main() -> int:
     parser.add_argument(
         "--pivot",
         type=parse_point,
-        help="fixed pivot x,y. Required for --model pendulum",
+        help="pivot or anchor x,y. Required for --model pendulum",
+    )
+    parser.add_argument(
+        "--anchor-mode",
+        choices=("fixed", "tracked"),
+        default="fixed",
+        help="keep the pendulum pivot fixed or track it as a second SAM 2 object",
     )
     parser.add_argument("--output", default="results/tracking.json", help="tracking.json path")
     parser.add_argument(
@@ -415,6 +519,7 @@ def main() -> int:
             keep_frames=keep,
             model=args.model,
             pivot=args.pivot,
+            anchor_mode=args.anchor_mode,
         )
         return 0
     except Exception as exc:

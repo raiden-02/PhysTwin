@@ -82,6 +82,45 @@ int main() {
         require_near(recovered.environment.radius, 220.0, 1e-8, "radius");
         require(recovered.rmse < 0.15, "noise-free RMSE exceeded 0.15 px");
         require(recovered.quality == "good", "noise-free fit must be good");
+        require(recovered.environment.anchor_mode == phystwin::AnchorMode::fixed,
+                "fixed mode regression changed anchor mode");
+        require(recovered.simulated.anchor_observations.empty(),
+                "fixed mode must not emit a tracked anchor path");
+
+        phystwin::Trajectory moving_camera = exact;
+        moving_camera.anchor_mode = phystwin::AnchorMode::tracked;
+        moving_camera.anchor_track_coverage = 1.0;
+        moving_camera.anchor_observations.clear();
+        moving_camera.anchor_observations.reserve(
+            moving_camera.observations.size());
+        for (auto& point : moving_camera.observations) {
+            const double camera_x = 28.0 * std::sin(0.8 * point.t) + 7.0 * point.t;
+            const double camera_y = 19.0 * std::cos(0.55 * point.t) - 19.0;
+            point.x += camera_x;
+            point.y += camera_y;
+            moving_camera.anchor_observations.push_back({
+                .frame = point.frame,
+                .t = point.t,
+                .x = exact.pivot->x + camera_x,
+                .y = exact.pivot->y + camera_y,
+            });
+        }
+        const phystwin::PendulumReconstruction camera_recovered =
+            phystwin::PendulumFitter{}.fit(moving_camera);
+        require_near(
+            camera_recovered.parameters.omega0, -0.35, 0.03, "camera omega0");
+        require_near(
+            camera_recovered.parameters.lambda, 7.2, 0.08, "camera lambda");
+        require_near(
+            camera_recovered.parameters.damping, 0.22, 0.025, "camera damping");
+        require(camera_recovered.rmse < 0.15,
+                "moving-camera RMSE exceeded 0.15 px");
+        require(camera_recovered.environment.anchor_mode ==
+                    phystwin::AnchorMode::tracked,
+                "tracked anchor mode was not preserved");
+        require(camera_recovered.simulated.anchor_observations.size() ==
+                    moving_camera.observations.size(),
+                "tracked reconstruction anchor path size");
 
         constexpr phystwin::PendulumParameters fast_parameters{
             .omega0 = -0.2,
@@ -178,6 +217,38 @@ int main() {
             [&] { (void)phystwin::PendulumFitter{}.fit(invalid_time); },
             "strictly increasing");
 
+        phystwin::Trajectory misaligned_anchor = moving_camera;
+        misaligned_anchor.anchor_observations[20].frame += 1;
+        require_throws(
+            [&] { (void)phystwin::PendulumFitter{}.fit(misaligned_anchor); },
+            "frame-aligned");
+
+        phystwin::Trajectory low_anchor_coverage = moving_camera;
+        low_anchor_coverage.anchor_track_coverage = 0.5;
+        require_throws(
+            [&] { (void)phystwin::PendulumFitter{}.fit(low_anchor_coverage); },
+            "at least 60%");
+
+        phystwin::Trajectory varying_relative_radius = moving_camera;
+        for (std::size_t i = 0;
+             i < varying_relative_radius.observations.size();
+             ++i) {
+            const auto& anchor =
+                varying_relative_radius.anchor_observations[i];
+            const double angle =
+                0.65 * std::sin(0.08 * static_cast<double>(i));
+            const double radius = 80.0 + 60.0 * static_cast<double>(i % 5);
+            varying_relative_radius.observations[i].x =
+                anchor.x + radius * std::sin(angle);
+            varying_relative_radius.observations[i].y =
+                anchor.y + radius * std::cos(angle);
+        }
+        require_throws(
+            [&] {
+                (void)phystwin::PendulumFitter{}.fit(varying_relative_radius);
+            },
+            "varies too much");
+
         std::cout << "pendulum synthetic recovery\n"
                   << "parameter     actual       recovered      abs_error\n"
                   << "omega0        -0.35        "
@@ -190,12 +261,15 @@ int main() {
                   << recovered.parameters.damping << "          "
                   << std::abs(recovered.parameters.damping - 0.22) << "\n"
                   << "RMSE: " << recovered.rmse << " px\n"
+                  << "moving-camera RMSE: " << camera_recovered.rmse << " px\n"
+                  << "moving-camera lambda: "
+                  << camera_recovered.parameters.lambda << "\n"
                   << "noisy/outlier RMSE: " << robust.rmse << " px\n"
                   << "noisy lambda: " << robust.parameters.lambda << "\n"
                   << "noisy damping: " << robust.parameters.damping << "\n"
                   << "fast lambda: " << fast_recovered.parameters.lambda << "\n"
                   << "fast RMSE: " << fast_recovered.rmse << " px\n"
-                  << "degenerate_checks: 5\n"
+                  << "degenerate_checks: 8\n"
                   << "search_generations: "
                   << recovered.search_generations << "\n"
                   << "fit time: " << recovered.fit_seconds << " s\n";

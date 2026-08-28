@@ -25,7 +25,7 @@ void print_usage(std::ostream& out) {
         << "  phystwin --help\n"
         << "  phystwin --version\n\n"
         << "tracking.json model selects projectile_bounce (default) or pendulum.\n"
-        << "Pendulum input also requires reference.pivot_x and pivot_y.\n"
+        << "Pendulum input requires a fixed pivot or frame-aligned tracked anchor.\n"
         << "--ground-y is the object's center y at ground contact. If omitted,\n"
         << "the largest observed centroid y is used.\n";
 }
@@ -40,6 +40,10 @@ int inspect(const std::filesystem::path& path) {
               << "fps: " << traj.fps << "\n"
               << "frame_size: " << traj.frame_width << "x" << traj.frame_height << "\n"
               << "n_observations: " << traj.observations.size() << "\n"
+              << "anchor_mode: " << phystwin::anchor_mode_name(traj.anchor_mode)
+              << "\n"
+              << "n_anchor_observations: " << traj.anchor_observations.size()
+              << "\n"
               << "first: frame=" << first.frame << " t=" << first.t << " x=" << first.x
               << " y=" << first.y << "\n"
               << "last:  frame=" << last.frame << " t=" << last.t << " x=" << last.x
@@ -74,6 +78,12 @@ int fit(const std::filesystem::path& path,
                   << "input: " << path.string() << "\n"
                   << "output: " << output.string() << "\n"
                   << "model: pendulum\n"
+                  << "anchor_mode: "
+                  << phystwin::anchor_mode_name(
+                         reconstruction.environment.anchor_mode)
+                  << "\n"
+                  << "anchor_coverage: "
+                  << reconstruction.anchor_track_coverage * 100.0 << "%\n"
                   << "observations: " << reconstruction.n << "\n"
                   << "pivot: " << reconstruction.environment.pivot_x << ", "
                   << reconstruction.environment.pivot_y << " px\n"

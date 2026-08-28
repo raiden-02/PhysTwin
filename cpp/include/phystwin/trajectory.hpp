@@ -11,8 +11,15 @@ enum class DynamicsModel {
     pendulum,
 };
 
+enum class AnchorMode {
+    fixed,
+    tracked,
+};
+
 std::string_view model_name(DynamicsModel model);
 DynamicsModel parse_model(std::string_view name);
+std::string_view anchor_mode_name(AnchorMode mode);
+AnchorMode parse_anchor_mode(std::string_view name);
 
 struct ReferencePoint {
     double x = 0.0;
@@ -39,7 +46,10 @@ struct Trajectory {
     double fps = 0.0;
     int frame_width = 0;
     int frame_height = 0;
+    AnchorMode anchor_mode = AnchorMode::fixed;
     std::optional<ReferencePoint> pivot;
+    std::optional<double> anchor_track_coverage;
+    std::vector<Observation> anchor_observations;
     std::vector<Observation> observations;
 };
 

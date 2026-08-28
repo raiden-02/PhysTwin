@@ -35,14 +35,14 @@
       "search_generations": 160,
       "refinement_iterations": 23,
       "iterations": null,
-      "fit_seconds": 0.0160566,
-      "stdout": "synthetic parameter recovery\r\nparameter     actual       recovered      abs_error\r\nvx0           180          180          2.84217e-14\r\nvy0           -420         -420         1.54178e-07\r\ng             980          980          2.50759e-06\r\ne             0.72         0.72         7.91809e-10\r\nRMSE: 9.01143e-07 px\r\nMAE: 5.99064e-07 px\r\nperturbed RMSE: 65.7512 px\r\nsearch_generations: 160\r\nrefinement_iterations: 23\r\nfit time: 0.0160566 s"
+      "fit_seconds": 0.0163879,
+      "stdout": "synthetic parameter recovery\r\nparameter     actual       recovered      abs_error\r\nvx0           180          180          2.84217e-14\r\nvy0           -420         -420         1.54178e-07\r\ng             980          980          2.50759e-06\r\ne             0.72         0.72         7.91809e-10\r\nRMSE: 9.01143e-07 px\r\nMAE: 5.99064e-07 px\r\nperturbed RMSE: 65.7512 px\r\nsearch_generations: 160\r\nrefinement_iterations: 23\r\nfit time: 0.0163879 s"
     },
     {
       "id": "pendulum_synthetic",
       "title": "C++ pendulum synthetic recovery",
       "kind": "cpp_pendulum_synthetic",
-      "notes": "Full nonlinear damped-pendulum recovery, deterministic noise/outliers, and five degenerate-input checks. Not video evidence.",
+      "notes": "Full nonlinear damped-pendulum recovery, moving-camera tracked-anchor recovery, deterministic noise/outliers, and eight degenerate-input checks. Not video evidence.",
       "parameters": {
         "omega0": {
           "actual": -0.35,
@@ -61,13 +61,15 @@
         }
       },
       "rmse_px": 1.29064e-10,
+      "moving_camera_rmse_px": 2.49329e-11,
+      "moving_camera_lambda": 7.2,
       "noisy_outlier_rmse_px": 2.62899,
       "noisy_lambda": 7.19915,
       "noisy_damping": 0.217734,
-      "fit_seconds": 0.309859,
-      "degenerate_checks": 5,
+      "fit_seconds": 0.321877,
+      "degenerate_checks": 8,
       "search_generations": 220,
-      "stdout": "pendulum synthetic recovery\r\nparameter     actual       recovered      abs_error\r\nomega0        -0.35        -0.35          2.92155e-12\r\nlambda        7.2          7.2          6.2883e-13\r\ndamping       0.22         0.22          1.876e-13\r\nRMSE: 1.29064e-10 px\r\nnoisy/outlier RMSE: 2.62899 px\r\nnoisy lambda: 7.19915\r\nnoisy damping: 0.217734\r\nfast lambda: 32\r\nfast RMSE: 5.84139e-12 px\r\ndegenerate_checks: 5\r\nsearch_generations: 220\r\nfit time: 0.309859 s"
+      "stdout": "pendulum synthetic recovery\r\nparameter     actual       recovered      abs_error\r\nomega0        -0.35        -0.35          2.92155e-12\r\nlambda        7.2          7.2          6.2883e-13\r\ndamping       0.22         0.22          1.876e-13\r\nRMSE: 1.29064e-10 px\r\nmoving-camera RMSE: 2.49329e-11 px\r\nmoving-camera lambda: 7.2\r\nnoisy/outlier RMSE: 2.62899 px\r\nnoisy lambda: 7.19915\r\nnoisy damping: 0.217734\r\nfast lambda: 32\r\nfast RMSE: 5.84139e-12 px\r\ndegenerate_checks: 8\r\nsearch_generations: 220\r\nfit time: 0.321877 s"
     },
     {
       "id": "mixkit_tennis",
@@ -83,6 +85,8 @@
       "frame_width": 720,
       "frame_height": 1280,
       "n_observations": 281,
+      "anchor_mode": "fixed",
+      "anchor_observations": 0,
       "parameters": {
         "e": 0.6654815066777158,
         "g": 173.1487720739143,
@@ -90,7 +94,7 @@
         "vy0": 706.5406915873825
       },
       "metrics": {
-        "fit_seconds": 0.0184097,
+        "fit_seconds": 0.0182978,
         "ground_source": "max_observed_centroid_y",
         "ground_violation": 0.0,
         "iterations": 183,
@@ -172,6 +176,8 @@
       "frame_width": 720,
       "frame_height": 1280,
       "n_observations": 281,
+      "anchor_mode": "fixed",
+      "anchor_observations": 0,
       "parameters": {
         "e": 0.570426823739109,
         "g": 125.69596188865603,
@@ -179,7 +185,7 @@
         "vy0": 646.6439241065198
       },
       "metrics": {
-        "fit_seconds": 0.0186044,
+        "fit_seconds": 0.0181499,
         "ground_source": "explicit",
         "ground_violation": 108.99288662145625,
         "iterations": 185,
@@ -257,6 +263,8 @@
       "frame_width": 640,
       "frame_height": 360,
       "n_observations": 180,
+      "anchor_mode": "fixed",
+      "anchor_observations": 0,
       "parameters": {
         "e": 0.7193214935426008,
         "g": 1795.648193109894,
@@ -264,7 +272,7 @@
         "vy0": 20.77061756813787
       },
       "metrics": {
-        "fit_seconds": 0.034381,
+        "fit_seconds": 0.0365779,
         "ground_source": "max_observed_centroid_y",
         "ground_violation": 0.0,
         "iterations": 183,
@@ -370,6 +378,8 @@
       "frame_width": 640,
       "frame_height": 360,
       "n_observations": 180,
+      "anchor_mode": "fixed",
+      "anchor_observations": 0,
       "parameters": {
         "e": 0.40016076631986824,
         "g": 1600.0611497083444,
@@ -377,7 +387,7 @@
         "vy0": 49.74176644012113
       },
       "metrics": {
-        "fit_seconds": 0.0348755,
+        "fit_seconds": 0.0356278,
         "ground_source": "max_observed_centroid_y",
         "ground_violation": 0.0,
         "iterations": 183,
@@ -502,14 +512,17 @@
       "frame_width": 720,
       "frame_height": 1036,
       "n_observations": 663,
+      "anchor_mode": "fixed",
+      "anchor_observations": 0,
       "parameters": {
         "damping": 0.024624566167507935,
         "lambda": 28.711236666478847,
         "omega0": -0.31367164064397884
       },
       "metrics": {
+        "anchor_track_coverage": 1.0,
         "angular_span": 0.6749181096989729,
-        "fit_seconds": 1.6160729,
+        "fit_seconds": 1.6513327,
         "mae": 3.196913232122214,
         "n": 663,
         "normalized_rmse": 0.004854447288247539,
@@ -547,6 +560,142 @@
           385.0,
           92.0
         ]
+      }
+    },
+    {
+      "id": "pendulum_cinematic_fixed",
+      "title": "Cinematic swing fixed-pivot baseline",
+      "kind": "cinematic_stress_video",
+      "model": "pendulum",
+      "video": "samples/cinematic/spiderman_swing.mp4",
+      "point": "875,490",
+      "pivot": "1115,663",
+      "source": "The Amazing Spider-Man (2012), user-provided local clip, 202.75-204.50 s",
+      "notes": "Copyrighted cinematic stress case. Fixed-pivot baseline on the same 45 paired frames as tracked mode. Not physical validation.",
+      "fps": 29.97002997002997,
+      "frame_width": 1920,
+      "frame_height": 1080,
+      "n_observations": 45,
+      "anchor_mode": "fixed",
+      "anchor_observations": 0,
+      "parameters": {
+        "damping": 1.6856581456002693,
+        "lambda": 1.386307655867791,
+        "omega0": -0.1997714832780444
+      },
+      "metrics": {
+        "anchor_track_coverage": 1.0,
+        "angular_span": 0.46928380989571816,
+        "fit_seconds": 0.1863488,
+        "mae": 22.62225117256298,
+        "n": 45,
+        "normalized_rmse": 0.08063034390727504,
+        "pivot_adjustment": 25.675747049967324,
+        "quality": "fair",
+        "radial_mad": 13.940678999975319,
+        "refinement_iterations": 19,
+        "rmse": 25.241696900581537,
+        "rmse_x": 18.74155321314656,
+        "rmse_y": 16.908502168424725,
+        "robust_cost": 44.99248754142023,
+        "search_generations": 220
+      },
+      "contact_timing": null,
+      "artifacts": {
+        "tracking": "results/cases/pendulum_cinematic/tracking_fixed.json",
+        "reconstruction": "results/cases/pendulum_cinematic/reconstruction_fixed.json",
+        "plot": "results/cases/pendulum_cinematic/reconstruction_fixed.png",
+        "overlay": "results/cases/pendulum_cinematic/overlay_fixed.mp4",
+        "gif": null,
+        "still": "results/cases/pendulum_cinematic/overlay_fixed.png"
+      },
+      "tracking_runtime": {
+        "device": "NVIDIA GeForce RTX 4080 SUPER",
+        "n_frames": 52,
+        "skipped_empty_masks": 0,
+        "end_to_end_seconds": 6.425363200018182,
+        "end_to_end_fps": 8.092927727393349,
+        "timing_includes": "model_load,init_state,jpeg_decode,propagate",
+        "point": [
+          875.0,
+          490.0
+        ],
+        "pivot": [
+          1115.0,
+          663.0
+        ],
+        "skipped_anchor_masks": 7,
+        "anchor_valid_masks": 45,
+        "paired_frames": 45,
+        "anchor_coverage": 0.8653846153846154
+      }
+    },
+    {
+      "id": "pendulum_cinematic_tracked",
+      "title": "Cinematic swing tracked-anchor stress case",
+      "kind": "cinematic_stress_video",
+      "model": "pendulum",
+      "video": "samples/cinematic/spiderman_swing.mp4",
+      "point": "875,490",
+      "pivot": "1115,663",
+      "source": "The Amazing Spider-Man (2012), user-provided local clip, 202.75-204.50 s",
+      "notes": "Copyrighted cinematic stress case. Tracks the lower red crane beacon as the visible web attachment reference. Camera rotation, perspective, active body motion, and changing apparent geometry remain unmodeled.",
+      "fps": 29.97002997002997,
+      "frame_width": 1920,
+      "frame_height": 1080,
+      "n_observations": 45,
+      "anchor_mode": "tracked",
+      "anchor_observations": 45,
+      "parameters": {
+        "damping": 1.4791264644130855,
+        "lambda": 3.5984664800869854,
+        "omega0": -0.7302197850912114
+      },
+      "metrics": {
+        "anchor_track_coverage": 0.8653846153846154,
+        "angular_span": 1.4024401503264357,
+        "fit_seconds": 0.1822843,
+        "mae": 50.20435819178285,
+        "n": 45,
+        "normalized_rmse": 0.1883470687327933,
+        "pivot_adjustment": 0.0,
+        "quality": "poor",
+        "radial_mad": 15.111825288068928,
+        "refinement_iterations": 19,
+        "rmse": 80.70667711959231,
+        "rmse_x": 63.48293156137834,
+        "rmse_y": 49.83457767513919,
+        "robust_cost": 41.271819287327396,
+        "search_generations": 220
+      },
+      "contact_timing": null,
+      "artifacts": {
+        "tracking": "results/cases/pendulum_cinematic/tracking_tracked.json",
+        "reconstruction": "results/cases/pendulum_cinematic/reconstruction_tracked.json",
+        "plot": "results/cases/pendulum_cinematic/reconstruction_tracked.png",
+        "overlay": "results/cases/pendulum_cinematic/overlay_tracked.mp4",
+        "gif": null,
+        "still": "results/cases/pendulum_cinematic/overlay_tracked.png"
+      },
+      "tracking_runtime": {
+        "device": "NVIDIA GeForce RTX 4080 SUPER",
+        "n_frames": 52,
+        "skipped_empty_masks": 0,
+        "end_to_end_seconds": 6.425363200018182,
+        "end_to_end_fps": 8.092927727393349,
+        "timing_includes": "model_load,init_state,jpeg_decode,propagate",
+        "point": [
+          875.0,
+          490.0
+        ],
+        "pivot": [
+          1115.0,
+          663.0
+        ],
+        "skipped_anchor_masks": 7,
+        "anchor_valid_masks": 45,
+        "paired_frames": 45,
+        "anchor_coverage": 0.8653846153846154
       }
     }
   ]

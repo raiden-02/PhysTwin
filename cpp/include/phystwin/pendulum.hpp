@@ -19,6 +19,8 @@ struct PendulumEnvironment {
     double radius = 0.0;
     double theta0 = 0.0;
     double integration_step = 1.0 / 240.0;
+    AnchorMode anchor_mode = AnchorMode::fixed;
+    std::vector<ReferencePoint> anchor_path;
 };
 
 struct PendulumReconstruction {
@@ -34,6 +36,7 @@ struct PendulumReconstruction {
     double radial_mad = 0.0;
     double angular_span = 0.0;
     double pivot_adjustment = 0.0;
+    double anchor_track_coverage = 1.0;
     std::string quality;
     int n = 0;
     int search_generations = 0;

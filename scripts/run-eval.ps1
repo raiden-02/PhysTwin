@@ -4,7 +4,9 @@
 param(
     [switch]$SkipTracking,
     [string]$PendulumPoint = "111,858",
-    [string]$PendulumPivot = "385,92"
+    [string]$PendulumPivot = "385,92",
+    [string]$CinematicPoint = "875,490",
+    [string]$CinematicAnchor = "1115,663"
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,6 +39,7 @@ New-Item -ItemType Directory -Force -Path `
     results\cases\generated_diagonal, `
     results\cases\generated_drop, `
     results\cases\pendulum_recorded, `
+    results\cases\pendulum_cinematic, `
     docs\demo | Out-Null
 
 Write-Host "=== synthetic recovery ==="
@@ -98,6 +101,36 @@ if ($hasPendulumClip -and -not (Test-Path $pendulumTracking)) {
         --viz results\cases\pendulum_recorded\tracking_preview.png }
 }
 
+$hasCinematicClip = Test-Path samples\cinematic\spiderman_swing.mp4
+$cinematicTracked = "results\cases\pendulum_cinematic\tracking_tracked.json"
+$cinematicFixed = "results\cases\pendulum_cinematic\tracking_fixed.json"
+$cinematicTrackedReconstruction = "results\cases\pendulum_cinematic\reconstruction_tracked.json"
+$cinematicFixedReconstruction = "results\cases\pendulum_cinematic\reconstruction_fixed.json"
+if ($hasCinematicClip -and -not (Test-Path $cinematicTracked)) {
+    if ($SkipTracking) {
+        throw "cinematic tracked-anchor tracking is missing and -SkipTracking was set"
+    }
+    Write-Host "=== track cinematic swing target and anchor ==="
+    Invoke-Checked { & $py vision\track.py samples\cinematic\spiderman_swing.mp4 `
+        --model pendulum --anchor-mode tracked `
+        --point $CinematicPoint --pivot $CinematicAnchor `
+        --output $cinematicTracked `
+        --viz results\cases\pendulum_cinematic\tracking_tracked_preview.png }
+}
+if ($hasCinematicClip -and (Test-Path $cinematicTracked)) {
+    $fixedData = Get-Content $cinematicTracked -Raw | ConvertFrom-Json
+    $fixedData.reference.mode = "fixed"
+    $fixedData.reference.PSObject.Properties.Remove("coverage")
+    $fixedData.PSObject.Properties.Remove("anchor_observations")
+    $fixedJson = ($fixedData | ConvertTo-Json -Depth 10) + [Environment]::NewLine
+    $fixedPath = Join-Path (Get-Location) $cinematicFixed
+    [System.IO.File]::WriteAllText(
+        $fixedPath,
+        $fixedJson,
+        (New-Object System.Text.UTF8Encoding($false))
+    )
+}
+
 Write-Host "=== fit ==="
 Invoke-Checked { & $exe fit results\cases\mixkit_tennis\tracking.json `
     --output results\cases\mixkit_tennis\reconstruction.json }
@@ -109,6 +142,16 @@ if ($hasPendulumClip) {
     & $exe fit $pendulumTracking --output $pendulumReconstruction
     if ($LASTEXITCODE -notin 0, 2) {
         throw "pendulum fit failed with exit $LASTEXITCODE"
+    }
+}
+if ($hasCinematicClip) {
+    & $exe fit $cinematicFixed --output $cinematicFixedReconstruction
+    if ($LASTEXITCODE -notin 0, 2) {
+        throw "cinematic fixed-pivot fit failed with exit $LASTEXITCODE"
+    }
+    & $exe fit $cinematicTracked --output $cinematicTrackedReconstruction
+    if ($LASTEXITCODE -notin 0, 2) {
+        throw "cinematic tracked-anchor fit failed with exit $LASTEXITCODE"
     }
 }
 
@@ -189,6 +232,36 @@ if ($hasPendulumClip) {
         --gif-colors 48 `
         --title "Recorded physical pendulum" }
 }
+if ($hasCinematicClip) {
+    Invoke-Checked { & $py vision\plot_reconstruction.py `
+        $cinematicFixed `
+        $cinematicFixedReconstruction `
+        --output results\cases\pendulum_cinematic\reconstruction_fixed.png `
+        --title "Cinematic swing fixed-pivot baseline" }
+    Invoke-Checked { & $py vision\plot_reconstruction.py `
+        $cinematicTracked `
+        $cinematicTrackedReconstruction `
+        --output results\cases\pendulum_cinematic\reconstruction_tracked.png `
+        --title "Cinematic swing tracked-anchor stress case" }
+    if (-not (Test-Path results\cases\pendulum_cinematic\overlay_fixed.mp4)) {
+        Invoke-Checked { & $py vision\overlay_comparison.py `
+            samples\cinematic\spiderman_swing.mp4 `
+            $cinematicFixed `
+            $cinematicFixedReconstruction `
+            --output results\cases\pendulum_cinematic\overlay_fixed.mp4 `
+            --still results\cases\pendulum_cinematic\overlay_fixed.png `
+            --title "Cinematic swing - fixed pivot baseline" }
+    }
+    if (-not (Test-Path results\cases\pendulum_cinematic\overlay_tracked.mp4)) {
+        Invoke-Checked { & $py vision\overlay_comparison.py `
+            samples\cinematic\spiderman_swing.mp4 `
+            $cinematicTracked `
+            $cinematicTrackedReconstruction `
+            --output results\cases\pendulum_cinematic\overlay_tracked.mp4 `
+            --still results\cases\pendulum_cinematic\overlay_tracked.png `
+            --title "Cinematic swing - tracked anchor stress case" }
+    }
+}
 
 $manifest = @{
     cases = @(
@@ -204,7 +277,7 @@ $manifest = @{
             title = "C++ pendulum synthetic recovery"
             kind = "cpp_pendulum_synthetic"
             stdout = "results/cases/pendulum_synthetic/stdout.txt"
-            notes = "Full nonlinear damped-pendulum recovery, deterministic noise/outliers, and five degenerate-input checks. Not video evidence."
+            notes = "Full nonlinear damped-pendulum recovery, moving-camera tracked-anchor recovery, deterministic noise/outliers, and eight degenerate-input checks. Not video evidence."
         }
         @{
             id = "mixkit_tennis"
@@ -282,6 +355,40 @@ if ($hasPendulumClip) {
         overlay = "results/cases/pendulum_recorded/overlay.mp4"
         gif = "docs/demo/pendulum_recorded_overlay.gif"
         still = "docs/demo/pendulum_recorded_overlay.png"
+    }
+}
+if ($hasCinematicClip) {
+    $manifest.cases += @{
+        id = "pendulum_cinematic_fixed"
+        title = "Cinematic swing fixed-pivot baseline"
+        kind = "cinematic_stress_video"
+        video = "samples/cinematic/spiderman_swing.mp4"
+        point = $CinematicPoint
+        pivot = $CinematicAnchor
+        source = "The Amazing Spider-Man (2012), user-provided local clip, 202.75-204.50 s"
+        notes = "Copyrighted cinematic stress case. Fixed-pivot baseline on the same 45 paired frames as tracked mode. Not physical validation."
+        tracking = $cinematicFixed.Replace("\", "/")
+        tracking_raw = "results/cases/pendulum_cinematic/tracking_tracked_raw.json"
+        reconstruction = $cinematicFixedReconstruction.Replace("\", "/")
+        plot = "results/cases/pendulum_cinematic/reconstruction_fixed.png"
+        overlay = "results/cases/pendulum_cinematic/overlay_fixed.mp4"
+        still = "results/cases/pendulum_cinematic/overlay_fixed.png"
+    }
+    $manifest.cases += @{
+        id = "pendulum_cinematic_tracked"
+        title = "Cinematic swing tracked-anchor stress case"
+        kind = "cinematic_stress_video"
+        video = "samples/cinematic/spiderman_swing.mp4"
+        point = $CinematicPoint
+        pivot = $CinematicAnchor
+        source = "The Amazing Spider-Man (2012), user-provided local clip, 202.75-204.50 s"
+        notes = "Copyrighted cinematic stress case. Tracks the lower red crane beacon as the visible web attachment reference. Camera rotation, perspective, active body motion, and changing apparent geometry remain unmodeled."
+        tracking = $cinematicTracked.Replace("\", "/")
+        tracking_raw = "results/cases/pendulum_cinematic/tracking_tracked_raw.json"
+        reconstruction = $cinematicTrackedReconstruction.Replace("\", "/")
+        plot = "results/cases/pendulum_cinematic/reconstruction_tracked.png"
+        overlay = "results/cases/pendulum_cinematic/overlay_tracked.mp4"
+        still = "results/cases/pendulum_cinematic/overlay_tracked.png"
     }
 }
 

@@ -1,4 +1,9 @@
-# PhysTwin architecture
+# PhysTwin V1 architecture
+
+This document describes the preserved 2D product at commit
+`b14b9a95f676e571e4b096f643663ef76cf34e03`. These contracts remain buildable
+and tested, but they are now legacy V1 boundaries. New 3D work uses
+[architecture-3d.md](architecture-3d.md).
 
 PhysTwin reconstructs one tracked object's 2D image-space motion with a selected projectile/bounce or nonlinear pendulum model.
 

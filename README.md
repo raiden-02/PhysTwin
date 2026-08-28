@@ -1,8 +1,10 @@
 # PhysTwin
 
-**Video → inferred dynamics → interactive physics twin**
+**Video → reconstructed world → executable physics twin**
 
-PhysTwin tracks one object in a short video, fits a selected dynamics model in C++20, and replays the reconstructed motion beside the recording in Three.js.
+PhysTwin currently ships a working 2D proof-of-concept. It tracks one object
+in a short video, fits a selected dynamics model in C++20, and replays the
+reconstructed motion beside the recording in Three.js.
 
 Implemented model families:
 
@@ -10,6 +12,21 @@ Implemented model families:
 - **Swing / Pendulum:** full nonlinear damped motion, fixed or tracked anchor, image-space radius, initial angular velocity, effective `g/L`, and damping.
 
 The Three.js scene uses positions from C++ reconstruction output. It does not run a second physics model in the browser.
+
+## 3D direction
+
+New development moves the canonical state from pixels to a reconstructed 3D
+scene, recovered camera, world-space motion, and an executable physical scene.
+Image observations remain evidence for reprojection and validation.
+
+P0 only establishes that migration boundary. No 3D reconstruction model or GPU
+physics engine is integrated yet. The complete design is in
+[docs/architecture-3d.md](docs/architecture-3d.md).
+
+The preserved V1 baseline is
+`b14b9a95f676e571e4b096f643663ef76cf34e03` on `main`. Projectile, pendulum,
+SAM 2 tracking, evaluations, and the current UI remain supported on the pivot
+branch.
 
 ![Recorded Mixkit tennis: observed vs simulated overlay](docs/demo/mixkit_overlay.gif)
 
@@ -115,7 +132,10 @@ The browser never talks to C++ or PyTorch directly. `vision/serve.py` binds 127.
 
 ## How it works
 
-See [docs/architecture.md](docs/architecture.md) for coordinates, units, the physics model, and the JSON boundary.
+See [docs/architecture.md](docs/architecture.md) for the current V1
+coordinates, units, physics models, and JSON boundary. See
+[docs/architecture-3d.md](docs/architecture-3d.md) for the additive 3D
+migration boundary.
 
 The ownership split is explicit:
 

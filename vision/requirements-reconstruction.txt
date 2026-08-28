@@ -1,0 +1,23 @@
+# P1 reconstruction extras. Install with scripts/setup-reconstruction.ps1.
+# Do not use this file to replace the V1 vision environment.
+#
+# Package: ByteDance-Seed/Depth-Anything-3
+# Code license: Apache-2.0
+# Pinned revision: 3d835ec1a5802d64a8b8b15f817a1ab54809bfe4
+# Weights: depth-anything/DA3-BASE @ f4a6c9b3c95e41c82048423d3493a81ec3fa810e
+# Weights license: Apache-2.0
+#
+# DA3-LARGE and DA3NESTED-GIANT-LARGE are CC BY-NC 4.0. P1 does not use them.
+
+einops
+omegaconf
+safetensors
+trimesh
+imageio
+e3nn
+addict
+plyfile
+pycolmap
+moviepy==1.0.3
+evo
+git+https://github.com/ByteDance-Seed/Depth-Anything-3.git@3d835ec1a5802d64a8b8b15f817a1ab54809bfe4

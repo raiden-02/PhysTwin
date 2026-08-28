@@ -1,0 +1,34 @@
+{
+  "description": "OpenCV/COLMAP world-to-camera poses. First camera is identity. Second translates +0.25 m along native +X.",
+  "native_convention": "opencv_w2c",
+  "w2c": [
+    [
+      [1.0, 0.0, 0.0, 0.0],
+      [0.0, 1.0, 0.0, 0.0],
+      [0.0, 0.0, 1.0, 0.0]
+    ],
+    [
+      [1.0, 0.0, 0.0, -0.25],
+      [0.0, 1.0, 0.0, 0.0],
+      [0.0, 0.0, 1.0, 0.0]
+    ]
+  ],
+  "processed_intrinsics": [
+    [200.0, 0.0, 80.0],
+    [0.0, 200.0, 60.0],
+    [0.0, 0.0, 1.0]
+  ],
+  "processed_size_px": [160, 120],
+  "source_size_px": [320, 240],
+  "expected_source_intrinsics": {
+    "fx_px": 400.0,
+    "fy_px": 400.0,
+    "cx_px": 160.0,
+    "cy_px": 120.0,
+    "skew_px": 0.0
+  },
+  "expected_T_world_camera": [
+    [1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+    [1.0, 0.0, 0.0, 0.25, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+  ]
+}

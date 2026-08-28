@@ -10,7 +10,8 @@ They are not moved or changed during P0.
 
 - `examples/scene_observation.json` is reconstructed visual evidence.
 - `examples/physical_scene.json` is a draft physical interpretation.
-- `vision/reconstruction/contracts.py` contains the executable P0 validation.
+- `examples/da3_w2c_fixture.json` locks the DA3 OpenCV `w2c` to observation-world conversion.
+- `vision/reconstruction/contracts.py` contains the executable contract validation.
 
 Large geometry, masks, depth arrays, and model-native outputs are referenced as
 artifacts. They are not embedded in these JSON envelopes.
@@ -81,5 +82,5 @@ full coordinate and migration decisions.
 Run the contract checks from the repository root:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest vision.test_reconstruction_contracts -v
+.\.venv\Scripts\python.exe -m unittest vision.test_reconstruction_contracts vision.test_reconstruction_p1 -v
 ```

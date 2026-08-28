@@ -44,6 +44,25 @@ body,
   margin-bottom: 12px;
 }
 
+.mode-choice {
+  display: flex;
+  gap: 6px;
+}
+
+.mode-choice button {
+  background: var(--btn);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font: inherit;
+}
+
+.mode-choice button.selected {
+  border-color: var(--obs);
+  background: #122630;
+}
+
 h1 {
   margin: 0;
   font-size: 22px;

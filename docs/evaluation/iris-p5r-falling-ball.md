@@ -1,10 +1,6 @@
 # IRIS falling_ball/big/01
 
-This is the successful real-video gravity recovery for PhysTwin V2.
-
-The pendulum case is closed. Do not treat that failure as this result.
-
-## Clip
+## Setup
 
 - Dataset: IRIS (`rasulkhanbayov/IRIS`), evidence kind `external_dataset`
 - File: `Falling_ball/big/01.mp4`
@@ -12,54 +8,75 @@ The pendulum case is closed. Do not treat that failure as this result.
 - Window: 1.40 s to 1.90 s, 16 frames
 - Ball radius (metric scale): 0.11 m
 - Drop height (context only): 1.00 m
-- IRIS gravity is evaluation ground truth only. It was not used to initialize or bound the fit.
+- IRIS gravity is evaluation ground truth. The prepare and fit path never load it.
 
-## Reconstruction
+## Reconstruction method
 
-Method: SAM2 mask, image-space center and horizontal silhouette radius, DA3 camera intrinsics, pinhole projected-sphere depth `Z = sqrt((f R / r)^2 + R^2)`.
+SAM2 mask, image-space center and horizontal silhouette radius, per-frame DA3
+camera intrinsics, pinhole projected-sphere depth
+`Z = sqrt((f R / r)^2 + R^2)`.
 
-DA3 depth is not used for the moving ball. The camera is treated as static. Measured DA3 pose drift was 3 mm.
+DA3 depth is not used for the moving ball. The camera is treated as static.
+DA3 first-to-last camera translation is `0.00298` reconstruction units
+(relative scale, not meters).
+
+DA3 reports varying K. This run used each sample's K. Focal-length relative
+span was about 0.5% (`fx` 2468.7 to 2481.4 px). That is small, but frame 0
+is not used as a silent fallback.
 
 Accepted frames: 16. Rejected frames: 0.
 
-Depth stayed near 1.45 m to 1.59 m. The ball first rises, then falls. That matches a toss or late release, not a drop from rest.
+Depth stayed near 1.45 m to 1.59 m. The ball first rises, then falls. That
+matches a toss or late release, not a drop from rest.
 
 ## Fit
 
-Profile: `free_fall_gravity_v1`. Every objective evaluation ran Newton 1.5.1 / Warp 1.16 on CUDA.
+Profile: `free_fall_gravity_v1`. Every objective evaluation ran Newton 1.5.1 /
+Warp 1.16 on CUDA.
 
-- Recovered gravity: 9.044 m/s²
+- Recovered gravity: 9.912 m/s²
 - IRIS ground truth: 9.81 m/s²
-- Absolute error: 0.766 m/s²
-- Percent error: 7.8%
-- Trajectory RMSE: 0.063 m
-- Normalized RMSE: 0.106
-- Observed extent: 0.596 m
-- Fitted initial vertical velocity: +1.17 m/s
-- Optimizer evaluations: 134
-- Runtime: 26.2 s
+- Absolute error: 0.102 m/s²
+- Percent error: 1.0%
+- Trajectory RMSE: 0.064 m
+- Normalized RMSE: 0.107
+- Observed extent: 0.597 m
+- Fitted initial vertical velocity: +1.34 m/s
+- Optimizer evaluations: 88
+- Runtime: 18.6 s
 - GPU: NVIDIA GeForce RTX 4080 SUPER
 - Bound hits: none
 
-The gravity error is inside the 10% ideal target. Normalized RMSE is just above 0.10 and inside the 0.20 acceptance target. The optimizer did not sit on a bound. The visual overlay follows the same rise-then-fall path.
+Gravity error is well inside 10%. Normalized RMSE is just above 0.10 and
+inside 0.20. The optimizer did not sit on a bound. The overlay follows the
+same rise-then-fall path.
+
+## Result
+
+This is a successful real-video gravity recovery on one IRIS clip. It is not
+a general video-to-physics benchmark.
 
 ## Counterfactual
 
-The fitted scene was cloned. Only gravity magnitude changed to 1.62 m/s² (Moon).
+The fitted scene was cloned. Only gravity magnitude changed to 1.62 m/s²
+(Moon).
 
-- Source fitted scene SHA-256: `edb9f8298f8e19456448b00fd094b04ef1bf443cb98d2368f14d9c77cc27f450`
-- Moon scene SHA-256: `24d060413dfb6e190fe8ed2569f375545ceef8cdef8708e8a1b227db081f584d`
-- Moon rollout SHA-256: `b1fc4a9473dffae40c8449d1f473418c8d766f0096b05db999ce6085180641a4`
+- Fitted scene SHA-256: `ecc26452a0baff48e4ccd4b87c06a92f8cf3da6d2ae89021d7417819fe67f019`
+- Fitted rollout SHA-256: `3283d5ee9a04a394509556c1464baa785eaa8d8895fa3110ad6b2059f87537b9`
+- Moon scene SHA-256: `7365ba5cbec9f736fe91c2f3b84cd6079307c586fb3226a6329c6c2f1f119028`
+- Moon rollout SHA-256: `9501df37bb65eed75ad34e762b2f6c7ceb137a2c42eaf25795d8c817b419cf6a`
 
 The Moon rollout is a simulated hypothesis. It was not observed.
 
-## Limitations
+## Assumptions
 
 - Metric scale uses the measured IRIS ball radius.
 - Gravity direction is `-Y` from an assumed level camera.
-- The body is one rigid sphere. There is no drag, bounce, or contact.
+- The body is one rigid sphere.
+
+## Limitations
+
+- There is no drag, bounce, or contact.
 - The last frames still include some depth drift from apparent-radius change.
-
-## Gate
-
-Accepted as portfolio evidence: gravity error 7.8%, normalized RMSE 0.106, no bound hit, same qualitative motion.
+- Normalized RMSE is 0.107, so the trajectory match is usable but not tight.
+- One clip does not establish a dataset-wide error rate.

@@ -1,4 +1,4 @@
-"""Inspect local clips for P5R eligibility. Do not invent metric scale."""
+"""Inspect local clips for real-fit eligibility. Metric scale is never invented."""
 
 from __future__ import annotations
 

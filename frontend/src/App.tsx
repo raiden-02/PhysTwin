@@ -196,8 +196,8 @@ export function App() {
     <div className="page">
       <header className="top">
         <div>
-          <h1>PhysTwin lab</h1>
-          <p className="lede"><a href="#/">Back to portfolio demo</a></p>
+          <h1>PhysTwin diagnostics</h1>
+          <p className="lede"><a href="#/">Back to demo</a></p>
         </div>
         <div className="mode-choice" role="tablist" aria-label="Product mode">
           <button
@@ -236,7 +236,7 @@ export function App() {
           </ol>
         ) : (
           <ol className="stepper">
-            <li>Lab inspectors for P4/P5 fixtures. The portfolio demo is the default page.</li>
+            <li>Synthetic fixtures and saved real-fit overlays.</li>
           </ol>
         )}
       </header>

@@ -1,22 +1,22 @@
-# IRIS pendulum_45/01 first P5R run
+# IRIS pendulum_45/01
 
-This is the first completed real-video P5 Newton fit. It is not a physics-quality
-pass. It is not independent rope-length recovery.
+Experiment: first real-video Newton tether fit.
 
-Machine-readable copy:
-[`iris-p5r-pendulum-45-01.json`](iris-p5r-pendulum-45-01.json).
+It is not a physics-quality pass. It is not independent rope-length recovery.
+
+Machine-readable copy: [`iris-p5r-pendulum-45-01.json`](iris-p5r-pendulum-45-01.json).
 
 Large local files stay in `results/physics3d/p5r-real-fit/` and
-`datasets/IRIS/`. Those directories are gitignored. Do not commit them.
+`datasets/IRIS/`. Those directories are gitignored.
 
-## Provenance
+## Setup
 
 Source: Hugging Face dataset `rasulkhanbayov/IRIS`, clip
 `Pendulum/pendulum_45/01.mp4`.
 
-Evidence kind is `external_dataset`, not `recorded_real`.
+Evidence kind is `external_dataset`.
 
-Seeds:
+Clip config:
 `contracts/3d/v1/examples/p5r_iris_pendulum_45_01.json`.
 
 Prepare window: start `2.0 s`, duration `4.0 s`, 16 kept frames. Frame 0 of the
@@ -33,15 +33,12 @@ Profile: `tether_initial_tangent_velocity_fixed_length_v1`.
 
 Fit id: `p5-359580f85437`. Date: 2026-08-29.
 
-## Saved numbers
+## Result
 
 Copied from the local artifacts on this machine. Re-running the GPU fit can
 change the hashes.
 
-Lifts:
-
-- accepted: `32`
-- rejected: `0`
+Lifts: accepted `32`, rejected `0`.
 
 Observed body-origin travel (16 samples):
 
@@ -75,32 +72,12 @@ XPBD tether residual on the saved rollout:
 - max: `0.300 m`
 - RMS: `0.173 m`
 
-Optimizer:
+Optimizer: bounded differential evolution with coordinate refinement, `76`
+evaluations, `226 s`, NVIDIA GeForce RTX 4080 SUPER.
 
-- method: bounded differential evolution with coordinate refinement
-- evaluations: `76`
-- fit wall time: `226 s`
-- GPU: NVIDIA GeForce RTX 4080 SUPER
-- peak Warp mempool: `70706` bytes
-
-Validity:
-
-- `execution_valid`: true
-- `quality.status`: `unassessed`
-- `validation.passed`: true because the Newton run executed, not because the
-  residual is good
-
-Warnings stored on the artifacts:
-
-- Mass is fixed because gravity-only ideal tether motion does not identify it.
-- Damping is not fitted because the P4 runtime has no validated damping
-  parameter.
-- Real-fit quality is unassessed. RMSE is reported and is not a pass/fail.
-- held_fixed parameters were not independently recovered by the optimizer.
-- Newton XPBD enforces the distance joint numerically.
-- XPBD tether residual exceeds the P4 fixture `1e-5` check. The residual is
-  reported. This is not a hidden pass.
-- The P5R body is a passive rigid proxy for the lifted object centroid.
+`execution_valid` is true. `quality.status` is `unassessed`.
+`validation.passed` is true because Newton executed, not because the residual
+is good.
 
 ## Overlay
 
@@ -113,21 +90,11 @@ across, with only `3 cm` of vertical travel. The Newton path swings about
 `0.53 m` in Y and `0.83 m` in Z. Per-sample 3D error starts near `0.08 m` at
 `t=0` and reaches about `1.02 m`. Mean error is `0.49 m`.
 
-A residual larger than the whole observed trajectory is a poor fit. Do not
-read `COMPLETE` or `execution_valid` as success.
-
-## P7
-
-Do not start P7 counterfactuals from this fit. The optimizer barely moved the
-objective. One velocity parameter sat on its bound. The XPBD rod stretched by
-`0.30 m` on a `0.50 m` rest length. The overlay does not match the observed
-path.
+A residual larger than the whole observed trajectory is a poor fit. `COMPLETE`
+and `execution_valid` only mean the solver ran.
 
 ## Diagnosis
 
 A later audit of these same artifacts is in
 [iris-p5r-pendulum-45-01-diagnosis.md](iris-p5r-pendulum-45-01-diagnosis.md).
-The poor residual is not an optimizer-budget problem. Do not rerun this
-pendulum fit until the 3D lift, the pivot endpoint, and a 0.50 m XPBD rod
-are each actually valid. Prefer IRIS `falling_ball` for the first successful
-real P5R proof.
+The poor residual is not an optimizer-budget problem.

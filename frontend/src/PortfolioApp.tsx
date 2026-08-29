@@ -13,9 +13,6 @@ export function PortfolioApp() {
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [showMoon, setShowMoon] = useState(true);
-  const [openHow, setOpenHow] = useState(false);
-  const [openFail, setOpenFail] = useState(false);
-  const [openTech, setOpenTech] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -77,26 +74,18 @@ export function PortfolioApp() {
     <div className="portfolio">
       <header className="hero">
         <h1>PhysTwin</h1>
-        <p className="tagline">Turn ordinary video into an executable 3D physics model.</p>
         <p className="lede">
-          Reconstruct motion, fit physical parameters on the GPU, then simulate what
-          would happen under different physics.
+          Reconstruct 3D motion from a video, fit a rigid-body scene in Newton,
+          then resimulate the same motion under different gravity.
         </p>
       </header>
 
-      <ol className="story">
-        <li>Real Video</li>
-        <li>Reconstructed 3D Motion</li>
-        <li>Fitted Physics</li>
-        <li>Counterfactual</li>
-      </ol>
-
       <section className="demo-grid" aria-label="IRIS Falling Ball">
         <figure className="panel">
-          <figcaption>Real video</figcaption>
+          <figcaption>Source video</figcaption>
           {videoError ? (
             <p className="hint">
-              The IRIS clip is not on this machine. The 3D paths below still come from
+              The IRIS clip is not on this machine. The 3D paths still come from
               the saved reconstruction.
             </p>
           ) : (
@@ -111,7 +100,7 @@ export function PortfolioApp() {
           )}
         </figure>
         <figure className="panel">
-          <figcaption>3D motion</figcaption>
+          <figcaption>3D paths</figcaption>
           <DemoScene
             observed={demo.observed}
             fitted={demo.fitted}
@@ -187,15 +176,15 @@ export function PortfolioApp() {
         </div>
       </section>
 
-      <details className="fold" open={openHow} onToggle={(e) => setOpenHow((e.target as HTMLDetailsElement).open)}>
+      <details className="fold">
         <summary>How it works</summary>
         <pre className="pipeline">{`Video
 ↓
 SAM2 tracking
 ↓
-DA3 camera / scene reconstruction
+DA3 camera
 ↓
-metric sphere reconstruction
+known-radius sphere reconstruction
 ↓
 PhysicalMotionObservation
 ↓
@@ -206,17 +195,18 @@ PhysicalScene
 counterfactual rollout`}</pre>
       </details>
 
-      <details className="fold" open={openFail} onToggle={(e) => setOpenFail((e.target as HTMLDetailsElement).open)}>
-        <summary>Failure analysis</summary>
+      <details className="fold">
+        <summary>Limitations</summary>
         <p>
-          A pendulum experiment exposed unreliable small-object monocular depth and a
-          short-distance XPBD constraint regime. The system rejected the poor fit
-          rather than presenting it as valid physics.
+          Metric scale uses the measured IRIS ball radius. Gravity direction is
+          assumed down the camera +Y axis. The model is one rigid sphere with
+          no drag or contact. A pendulum experiment with DA3 depth and a short
+          XPBD rod did not recover a usable trajectory.
         </p>
       </details>
 
-      <details className="fold" open={openTech} onToggle={(e) => setOpenTech((e.target as HTMLDetailsElement).open)}>
-        <summary>Technical details</summary>
+      <details className="fold">
+        <summary>Method detail</summary>
         <ul>
           <li>Dataset: {demo.dataset} {demo.relative_video}</li>
           <li>Normalized RMSE: {fmt(demo.metrics.normalized_rmse, 3)}</li>
@@ -226,12 +216,11 @@ counterfactual rollout`}</pre>
           <li>
             Moon gravity is a simulated hypothesis. It was not observed in the video.
           </li>
+          <li>
+            <a href="#/lab">Diagnostics</a>
+          </li>
         </ul>
       </details>
-
-      <p className="lab-link">
-        <a href="#/lab">Validation / developer details</a>
-      </p>
     </div>
   );
 }

@@ -161,7 +161,7 @@ def register_physics_routes(
         if footage["status"] == "AWAITING_FOOTAGE" and not saved:
             blockers = [
                 "No eligible clip with a measured length is available. "
-                "P5R will not invent metric scale or run Newton on ineligible footage."
+                "The inspect path does not invent metric scale or run Newton on ineligible footage."
             ]
         return {
             "status": status,

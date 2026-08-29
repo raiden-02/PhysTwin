@@ -31,7 +31,7 @@ if ($LASTEXITCODE -ne 0) { throw "Newton/Warp install failed" }
 if ($LASTEXITCODE -ne 0) { throw "Newton/Warp CUDA smoke test failed" }
 
 Write-Host ""
-Write-Host "Run the P4 fixture:"
+Write-Host "Run the tether fixture:"
 Write-Host "  .\.venv-physics\Scripts\python.exe -m physics3d.simulate_physical_scene ``"
 Write-Host "    contracts\3d\v1\examples\physical_scene_tether.json ``"
 Write-Host "    --output results\physics3d\p4-tether --repeat-check"

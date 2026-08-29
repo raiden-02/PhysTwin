@@ -1,12 +1,14 @@
-# IRIS pendulum_45/01 failure diagnosis
+# IRIS pendulum_45/01 diagnosis
 
-This audit uses the existing `results/physics3d/p5r-real-fit` artifacts. It
+## Experiment
+
+This note uses the existing `results/physics3d/p5r-real-fit` artifacts. It
 does not rewrite those files. It does not rerun the optimizer.
 
 The saved fit remains a poor residual. The cause is the observation and the
 0.50 m XPBD rod, not a small search-budget miss.
 
-## Reconstruction before scale
+## Observed failure
 
 Unscaled DA3+SAM2 `anchor → target` distances, 16 frames:
 
@@ -45,8 +47,6 @@ A rigid 0.50 m rope should not move by 16 cm.
 First-frame scaled length is 0.582 m. Projecting that first body point onto
 the 0.50 m constraint sphere moves it 0.082 m.
 
-## Anchor and target ranges
-
 Unscaled anchor XYZ travel (supposedly fixed):
 
 - X 0.022
@@ -76,24 +76,17 @@ The clamp depth matches the IRIS camera distance. The tennis ball is about
 43 cm too close. That depth split is why the reconstructed 3D "rope" leans
 along the camera axis.
 
-## First-frame angle vs IRIS 45°
-
 Reconstructed first-frame angle from assumed physical down (`-Y`) is 57.1°.
 Most of that angle is the camera-axis depth lean, not the image-plane swing.
 
 The prepare window starts at t=2.0 s. Image-plane angle from vertical at that
 frame is 10°. Later peaks are 36° to 39°. So t=2 s is near the bottom of the
-swing, not the IRIS 45° release pose. Do not treat 57° vs 45° as a failed
-release-angle check.
+swing, not the IRIS 45° release pose. 57° vs 45° is not a failed release-angle
+check.
 
 `level_camera` / first-camera `+Y` is plausible for a leveled lab camera.
 The image has a real vertical swing. The 3D lift does not keep that vertical,
 so the gravity axis is not usable on these XYZ samples.
-
-## Tracking endpoints
-
-Green is the lifted target pixel. Cyan is the seed click. Red is the lifted
-anchor pixel. Magenta is the anchor seed.
 
 The target SAM2 mask follows the tennis ball. The robust 3D center sits on
 the ball. The seed is a few tens of pixels below that center. That is a
@@ -109,7 +102,7 @@ centroid. IRIS does not define the tape ends in `parameters.json`. The
 physical rope starts at the string exit, below the clamp body. The
 calibration pair is not clearly what IRIS measured.
 
-## Newton constraint
+## Diagnosis
 
 No optimizer. Rest length held at 0.50 m. Speed along tangent `u` only.
 
@@ -125,7 +118,7 @@ Current 60 Hz, 24 XPBD iterations:
 
 Same 0.50 m IRIS scene at 240 Hz, 16 or 32 iterations: max error still 0.300 m.
 
-Synthetic P5 template, same solver:
+Synthetic tether template, same solver:
 
 | rest (m) | step | iterations | max error |
 |---|---|---|---|
@@ -139,8 +132,6 @@ The current joint holds a 2 m rod. It does not hold a 0.50 m rod. Finer
 substeps do not fix it. A candidate with ~0.30 m tether error is not a valid
 rigid-tether hypothesis. The 60 Hz / 24-iteration setup is not the isolated
 cause. Short rest length is outside this XPBD distance-joint regime.
-
-## Classification
 
 Main failures, in order:
 
@@ -158,23 +149,19 @@ Main failures, in order:
 7. Physical-model mismatch, secondary. Bifilar tennis ball vs an ideal rod.
 8. Optimizer issue, not primary. The search had nothing physical to match.
 
-No code fix in this checkpoint. A local solver tweak or more generations
-cannot repair the lift or the pivot.
+A local solver tweak or more generations cannot repair the lift or the pivot.
 
-## What to do next
+## Conclusion
 
-Do not spend another optimizer run on `pendulum_45/01`.
+This clip is a useful negative result. The fit executed and the residual is
+poor for reconstructable reasons.
 
-Pendulum is worth another attempt only after all three of these exist:
+A later pendulum attempt would need all three of:
 
 - a 3D lift that keeps bob and cable near 0.96 m
 - a pivot at the actual string exit
 - a constraint that can hold 0.50 m, or a scene scaled so rest length stays
   in the validated ~2 m regime
 
-The faster correct P5R proof is IRIS `falling_ball`. That class has
-`drop_height`, `ball_radius`, and `gravity`. Scale from `ball_radius` or
-another non-gravity length, then recover gravity. No tether endpoint and no
-XPBD distance joint.
-
-Do not start P7 from the current pendulum fit.
+The falling-ball class avoids the tether endpoint and the short XPBD rod.
+Scale comes from `ball_radius`, then gravity is recovered from motion.

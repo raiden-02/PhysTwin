@@ -480,7 +480,7 @@ def simulate_physical_scene(document: dict[str, Any], *, repeat_check: bool = Fa
         warnings.append("Unconstrained free-fall body. No distance joint is present.")
     if observation_aligned and constraint is not None and max_error > 1e-5:
         warnings.append(
-            "XPBD tether residual exceeds the P4 fixture 1e-5 check. "
+            "XPBD tether residual exceeds the standalone fixture 1e-5 check. "
             "The residual is reported. This is not a hidden pass."
         )
     if observation_aligned and varying_axis_count < 3:

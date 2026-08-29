@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lift a recorded clip into entity tracks and a P5R motion observation.
+"""Lift a recorded clip into entity tracks and a metric motion observation.
 
 Without a tape-measured scene distance this writes relative entity tracks and
 BLOCKED_INPUT. It does not invent metric_measured scale.
@@ -177,7 +177,7 @@ def main() -> int:
     if not video.is_file():
         raise SystemExit(f"video not found: {video}")
     if args.target_xy is None or args.anchor_xy is None:
-        raise SystemExit("P5R prepare requires --target-xy and --anchor-xy")
+        raise SystemExit("prepare requires --target-xy and --anchor-xy")
     if args.known_distance_m is not None:
         if args.known_distance_m <= 0.0:
             raise SystemExit("known-distance-m must be > 0")

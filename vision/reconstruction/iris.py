@@ -1,4 +1,4 @@
-"""IRIS external-dataset access for one P5R pendulum clip."""
+"""IRIS external-dataset access for the pendulum clip."""
 
 from __future__ import annotations
 

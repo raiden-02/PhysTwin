@@ -4,14 +4,14 @@ This directory contains the first project-owned 3D contract examples.
 
 The contract version is independent from the product generation. The existing
 2D `tracking.json` and `reconstruction.json` files remain legacy V1 contracts.
-They are not moved or changed during P0.
+They stay on the image-space path.
 
 ## Files
 
 - `examples/scene_observation.json` is reconstructed visual evidence.
 - `examples/physical_scene.json` is a draft physical interpretation.
-- `examples/physical_scene_tether.json` is the first executable P4 scene.
-- `examples/physical_scene_tether_fit_template.json` is the bounded P5 fit template.
+- `examples/physical_scene_tether.json` is the first executable tether scene.
+- `examples/physical_scene_tether_fit_template.json` is the bounded tether-fit template.
 - `examples/physical_motion_observation_tether_synthetic.json` is a compact
   sample of the generated metric target.
 - `examples/inverse_physics_fit_blocked_input.json` records the strict gate
@@ -20,14 +20,14 @@ They are not moved or changed during P0.
 - `examples/tram_c2w_fixture.json` locks the TRAM OpenCV `c2w` plus camera-space SMPL24 joints to observation-world conversion.
 - `vision/reconstruction/contracts.py` contains the executable contract validation.
 - Body evidence is namespaced as `extensions.phystwin.humans.v1`. It does not change core coordinates.
-- `phystwin.reconstruction_evaluation` records P3 metrics, alignment, coverage,
+- `phystwin.reconstruction_evaluation` records reconstruction metrics, alignment, coverage,
   benchmark provenance, and artifact hashes. It stays separate from
   `SceneObservation` and `PhysicalScene`.
-- `phystwin.simulated_world_state` records P4 simulator output. Three.js reads
+- `phystwin.simulated_world_state` records simulator output. Three.js reads
   this project-owned rollout instead of Newton objects.
 - `phystwin.physical_motion_observation` stores metric 3D body-origin evidence
-  for the P5 objective.
-- `phystwin.inverse_physics_fit` stores P5 status, bounds, fitted values,
+  for the inverse-physics objective.
+- `phystwin.inverse_physics_fit` stores fit status, bounds, fitted values,
   objective metrics, artifact hashes, and validation.
 
 Large geometry, masks, depth arrays, and model-native outputs are referenced as
@@ -71,7 +71,7 @@ Required core fields:
 The example remains a draft because scale, alignment, and a simulator backend
 are unresolved. Draft serialization is valid. Execution is not.
 
-P4 defines one concrete executable payload:
+The first executable payload is:
 
 - one `rigid_body` with a sphere shape, `T_world_body_initial`, mass, and
   initial linear and angular velocity
@@ -79,13 +79,13 @@ P4 defines one concrete executable payload:
   fixed rest length
 - Newton XPBD execution settings with duration and fixed step
 
-The original example stays draft. The P4 tether fixture is standalone and
+The original example stays draft. The tether fixture is standalone and
 already uses SI units, so its observation alignment fields are null and
 `scale_source` is `not_applicable`.
 
 ## `SimulatedWorldState`
 
-The P4 output schema is `phystwin.simulated_world_state`, version 1. It stores:
+The rollout schema is `phystwin.simulated_world_state`, version 1. It stores:
 
 - the source `PhysicalScene` ID and canonical SHA-256
 - Newton, Warp, solver, device, and CUDA identity
@@ -96,11 +96,11 @@ The P4 output schema is `phystwin.simulated_world_state`, version 1. It stores:
 - finite, time, gravity, tether-error, XYZ-motion, and repeat-run checks
 - warnings and failures
 
-## P5 fit contracts
+## Inverse-physics contracts
 
 `PhysicalMotionObservation` is not a second `SceneObservation`. It is the small
 metric signal consumed by one inverse-physics objective. It can be generated
-from a synthetic rollout, an eligible `humans.v1` pelvis track, or a P5R
+from a synthetic rollout, an eligible `humans.v1` pelvis track, or an
 `entities.v1` object root.
 
 The human adapter still requires `metric_measured` scale and measured
@@ -121,12 +121,12 @@ established scale, use
 `rest_length_m.held_fixed` to true. Status is `COMPLETE`, `BLOCKED_INPUT`, or
 `FAILED`.
 
-See [the P5 fitting document](../../../docs/physics-fitting-p5.md) for the
+See [inverse-physics.md](../../../docs/inverse-physics.md) for the
 objective, bounds, gate, optimizer, and failure behavior.
 
 ## Extension rule
 
-Future evidence that is not part of the P0 core lives under a versioned,
+Evidence that is not part of the core envelope lives under a versioned,
 namespaced key in `extensions`, for example:
 
 ```json

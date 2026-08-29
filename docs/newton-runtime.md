@@ -1,6 +1,6 @@
-# P4 Newton/Warp physics runtime
+# Newton runtime
 
-P4 adds one executable 3D physics path:
+One executable 3D physics path:
 
 ```text
 PhysicalScene JSON
@@ -10,7 +10,7 @@ PhysicalScene JSON
   -> Three.js playback
 ```
 
-This is a forward simulation fixture. It does not fit parameters to DA3 or TRAM.
+This is forward simulation. It does not fit parameters to DA3 or TRAM.
 
 ## Tested runtime and package pins
 
@@ -27,11 +27,11 @@ This is a forward simulation fixture. It does not fit parameters to DA3 or TRAM.
 
 The PyPI Warp wheel includes its CUDA runtime. A local CUDA Toolkit is not
 required. Warp's CUDA 12 wheel requires NVIDIA driver 525 or newer. Newton
-1.5.1 sets a stricter CUDA 12 minimum of driver 545, so P4 requires 545 or
-newer.
+1.5.1 sets a stricter CUDA 12 minimum of driver 545, so this runtime requires
+545 or newer.
 
 Newton 1.5.1 requires Python 3.10 or newer and depends on Warp 1.16.0 or newer.
-P4 pins both packages so the contract and measurements refer to one tested
+Both packages are pinned so the contract and measurements refer to one tested
 combination.
 
 The Warp wheel also ships third-party components under their own notices.
@@ -57,47 +57,40 @@ ModelBuilder.add_joint_distance(
 
 Newton's solver support table states that `SolverXPBD` is the only current
 solver that enforces `DISTANCE`. `SolverSemiImplicit` and
-`SolverFeatherstone` treat it as a free joint. P4 therefore uses:
+`SolverFeatherstone` treat it as a free joint. The tether fixture therefore
+uses:
 
 - one body created with `ModelBuilder.add_link`
 - world parent index `-1`
 - `parent_xform` at the world anchor
 - `child_xform` at the body-local attachment
 - equal `min_distance` and `max_distance`
-- `SolverXPBD` with 16 iterations
+- `SolverXPBD` with 16 iterations on the 240 Hz fixture
 
 Equal minimum and maximum distances make this a bilateral fixed-length
-constraint. It is not a slack rope. No custom Warp constraint and no MuJoCo
-Warp fallback are needed.
+constraint. It is not a slack rope.
 
 Official sources:
 
-- Newton 1.5.1 installation source: <https://github.com/newton-physics/newton/blob/v1.5.1/docs/guide/installation.rst>
-- Newton 1.5.1 solver support source: <https://github.com/newton-physics/newton/blob/v1.5.1/docs/solvers/index.rst>
-- Newton 1.5.1 `ModelBuilder` source: <https://github.com/newton-physics/newton/blob/v1.5.1/newton/_src/sim/builder.py>
+- Newton 1.5.1 installation: <https://github.com/newton-physics/newton/blob/v1.5.1/docs/guide/installation.rst>
+- Newton 1.5.1 solver support: <https://github.com/newton-physics/newton/blob/v1.5.1/docs/solvers/index.rst>
+- Newton 1.5.1 `ModelBuilder`: <https://github.com/newton-physics/newton/blob/v1.5.1/newton/_src/sim/builder.py>
 - Newton tag: <https://github.com/newton-physics/newton/tree/v1.5.1>
-- Warp 1.16.0 installation source: <https://github.com/NVIDIA/warp/blob/v1.16.0/docs/user_guide/installation.rst>
+- Warp 1.16.0 installation: <https://github.com/NVIDIA/warp/blob/v1.16.0/docs/user_guide/installation.rst>
 - Warp tag: <https://github.com/NVIDIA/warp/tree/v1.16.0>
+
+Free-fall uses `builder.add_body` (implicit free joint) and writes linear
+velocity into `joint_qd`. XPBD is semi-implicit Euler. Analytic Y can be about
+`0.5 g t dt` off at 60 Hz.
 
 ## Environment boundary
 
-Run physics in `.venv-physics`. Keep DA3, TRAM, SAM 2, FastAPI, and the V1
+Run physics in `.venv-physics`. Keep DA3, TRAM, SAM 2, FastAPI, and the image-space
 tools in `.venv`.
-
-```text
-FastAPI or CLI
-  -> .venv-physics\Scripts\python.exe
-  -> physical_scene_tether.json
-  -> simulated_world_state.json
-```
-
-Set up the physics environment:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup-physics.ps1
 ```
-
-Run the fixture with a repeated-run comparison:
 
 ```powershell
 .\.venv-physics\Scripts\python.exe -m physics3d.simulate_physical_scene `
@@ -105,14 +98,6 @@ Run the fixture with a repeated-run comparison:
   --output results\physics3d\p4-tether `
   --repeat-check
 ```
-
-The local UI uses the same command through a subprocess. Start it with:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\serve-ui.ps1
-```
-
-Select `3D physics`, then select `Inspect P4 physics fixture`.
 
 ## Input payload
 
@@ -154,10 +139,6 @@ The simulator boundary preserves the project convention:
 No axis swap is needed. The adapter creates `ModelBuilder` with
 `up_axis=newton.Axis.Y` and passes the project gravity vector directly. It
 also calls `Model.set_gravity` with the same vector after finalization.
-
-The adapter explicitly converts the input row-major rotation matrix to a Warp
-XYZW quaternion. It converts each Newton body transform back to a row-major
-`T_world_body`.
 
 Newton 1.5.1 exposes `State.body_qd` as linear velocity followed by angular
 velocity. Both are in world coordinates. This differs from Warp's native
@@ -211,11 +192,9 @@ cross-GPU or cross-version determinism.
 
 ## Current limits
 
-- P4 supports one sphere and one world-to-body bilateral fixed-distance
-  constraint. It does not model a slack rope.
-- It does not model contacts, damping, ropes with mass, articulated humans,
-  inverse fitting, or counterfactual edits.
+- The runtime supports one sphere and either free fall or one world-to-body
+  bilateral fixed-distance constraint. It does not model a slack rope.
+- It does not model contacts, damping, or ropes with mass.
 - XPBD enforces distance numerically. The rollout records max and RMS error.
+- A 0.50 m rod is not rigid in this XPBD setup. The 2 m fixture is.
 - The GPU-memory value does not include allocations outside Warp's mempool.
-- P3's EMDB measured benchmark is optional and unavailable here. The
-  evaluator itself is complete. No EMDB metric is claimed.

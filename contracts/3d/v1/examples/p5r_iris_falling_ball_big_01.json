@@ -1,0 +1,20 @@
+{
+  "schema": "phystwin.p5r_iris_clip",
+  "version": 1,
+  "dataset": "IRIS",
+  "evidence_kind": "external_dataset",
+  "repo_id": "rasulkhanbayov/IRIS",
+  "source_url": "https://huggingface.co/datasets/rasulkhanbayov/IRIS",
+  "class_key": "falling_ball",
+  "setting_key": "big",
+  "relative_video": "Falling_ball/big/01.mp4",
+  "start_s": 1.4,
+  "duration_s": 0.5,
+  "max_frames": 16,
+  "ball_radius_m": 0.11,
+  "up_mode": "level_camera",
+  "up_source": "assumed",
+  "static_camera": true,
+  "target_xy": [1920.0, 920.0],
+  "seed_notes": "Pixels on the 3840x2160 frame near t=1.50 s, mid-air soccer ball. Window 1.40-1.90 s is before the first bounce. IRIS gravity is evaluation ground truth only and must not enter the fitter."
+}

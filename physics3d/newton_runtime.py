@@ -125,7 +125,8 @@ def _read_state(state: newton.State, body_index: int) -> tuple[tuple[float, ...]
 def _build_runtime(scene: dict[str, Any]) -> TetherRuntime:
     execution = scene["execution"]
     body = scene["model"]["bodies"][0]
-    constraint = scene["model"]["constraints"][0]
+    constraints = scene["model"]["constraints"]
+    constraint = constraints[0] if constraints else None
     device_name = execution["device"]
     wp.init()
     if newton.__version__ != "1.5.1":
@@ -143,13 +144,14 @@ def _build_runtime(scene: dict[str, Any]) -> TetherRuntime:
         up_axis=newton.Axis.Y,
         gravity=tuple(scene["world"]["gravity_m_s2"]),
     )
-    body_index = builder.add_link(
-        xform=wp.transform(
-            p=wp.vec3(transform[3], transform[7], transform[11]),
-            q=wp.quat(*quaternion),
-        ),
-        label=body["id"],
+    xform = wp.transform(
+        p=wp.vec3(transform[3], transform[7], transform[11]),
+        q=wp.quat(*quaternion),
     )
+    if constraint is None:
+        body_index = builder.add_body(xform=xform, label=body["id"])
+    else:
+        body_index = builder.add_link(xform=xform, label=body["id"])
     radius = float(body["shape"]["radius_m"])
     volume = 4.0 * math.pi * radius**3 / 3.0
     shape_config = newton.ModelBuilder.ShapeConfig(
@@ -161,22 +163,31 @@ def _build_runtime(scene: dict[str, Any]) -> TetherRuntime:
         *body["linear_velocity_m_s"],
         *body["angular_velocity_rad_s"],
     )
-    joint_index = builder.add_joint_distance(
-        parent=-1,
-        child=body_index,
-        parent_xform=wp.transform(
-            p=wp.vec3(*constraint["world_anchor_m"]),
-            q=wp.quat_identity(),
-        ),
-        child_xform=wp.transform(
-            p=wp.vec3(*constraint["body_attachment_m"]),
-            q=wp.quat_identity(),
-        ),
-        min_distance=float(constraint["rest_length_m"]),
-        max_distance=float(constraint["rest_length_m"]),
-        label=constraint["id"],
-    )
-    builder.add_articulation([joint_index], label="p4_tether")
+    if constraint is None:
+        qd_start = builder.joint_qd_start[-1]
+        builder.joint_qd[qd_start : qd_start + 3] = [
+            float(value) for value in body["linear_velocity_m_s"]
+        ]
+        builder.joint_qd[qd_start + 3 : qd_start + 6] = [
+            float(value) for value in body["angular_velocity_rad_s"]
+        ]
+    if constraint is not None:
+        joint_index = builder.add_joint_distance(
+            parent=-1,
+            child=body_index,
+            parent_xform=wp.transform(
+                p=wp.vec3(*constraint["world_anchor_m"]),
+                q=wp.quat_identity(),
+            ),
+            child_xform=wp.transform(
+                p=wp.vec3(*constraint["body_attachment_m"]),
+                q=wp.quat_identity(),
+            ),
+            min_distance=float(constraint["rest_length_m"]),
+            max_distance=float(constraint["rest_length_m"]),
+            label=constraint["id"],
+        )
+        builder.add_articulation([joint_index], label="p4_tether")
 
     model = builder.finalize(device=device)
     model.set_gravity(tuple(scene["world"]["gravity_m_s2"]))
@@ -187,6 +198,8 @@ def _build_runtime(scene: dict[str, Any]) -> TetherRuntime:
     )
     state_0 = model.state()
     state_1 = model.state()
+    if constraint is None:
+        newton.eval_fk(model, model.joint_q, model.joint_qd, state_0)
     control = model.control()
     return TetherRuntime(
         model=model,
@@ -360,7 +373,8 @@ def simulate_physical_scene(document: dict[str, Any], *, repeat_check: bool = Fa
     source_hash = hashlib.sha256(canonical_json_bytes(scene)).hexdigest()
     execution = scene["execution"]
     body = scene["model"]["bodies"][0]
-    constraint = scene["model"]["constraints"][0]
+    constraints = scene["model"]["constraints"]
+    constraint = constraints[0] if constraints else None
     start_time = float(execution["start_time_s"])
     step = float(execution["fixed_step_s"])
     timeline_samples = [
@@ -377,9 +391,6 @@ def simulate_physical_scene(document: dict[str, Any], *, repeat_check: bool = Fa
         for index, transform in enumerate(first.transforms)
     ]
 
-    anchor = constraint["world_anchor_m"]
-    attachment = constraint["body_attachment_m"]
-    rest_length = float(constraint["rest_length_m"])
     tether_errors = []
     positions = [[], [], []]
     finite_state = True
@@ -388,16 +399,23 @@ def simulate_physical_scene(document: dict[str, Any], *, repeat_check: bool = Fa
         first.linear_velocities,
         first.angular_velocities,
     ):
-        point = transform_point(transform, attachment)
-        distance = math.sqrt(sum((point[axis] - anchor[axis]) ** 2 for axis in range(3)))
-        tether_errors.append(abs(distance - rest_length))
+        if constraint is not None:
+            point = transform_point(transform, constraint["body_attachment_m"])
+            anchor = constraint["world_anchor_m"]
+            rest_length = float(constraint["rest_length_m"])
+            distance = math.sqrt(sum((point[axis] - anchor[axis]) ** 2 for axis in range(3)))
+            tether_errors.append(abs(distance - rest_length))
         for axis in range(3):
             positions[axis].append(transform[axis * 4 + 3])
         finite_state = finite_state and all(
             math.isfinite(value) for value in (*transform, *linear, *angular)
         )
-    max_error = max(tether_errors)
-    rms_error = math.sqrt(sum(error * error for error in tether_errors) / len(tether_errors))
+    max_error = max(tether_errors) if tether_errors else 0.0
+    rms_error = (
+        math.sqrt(sum(error * error for error in tether_errors) / len(tether_errors))
+        if tether_errors
+        else 0.0
+    )
     axis_ranges = [max(values) - min(values) for values in positions]
     varying_axis_count = sum(value >= 0.05 for value in axis_ranges)
     configured_gravity = tuple(float(item) for item in scene["world"]["gravity_m_s2"])
@@ -413,7 +431,15 @@ def simulate_physical_scene(document: dict[str, Any], *, repeat_check: bool = Fa
         scene.get("observation_alignment", {}).get("observation_sha256") is not None
     )
     spatial_extent = math.sqrt(sum(value * value for value in axis_ranges))
-    if observation_aligned:
+    if constraint is None:
+        passed = (
+            finite_state
+            and gravity_matches
+            and time_monotonic
+            and axis_ranges[1] >= 0.05
+        )
+        invariant_profile = "free_fall"
+    elif observation_aligned:
         passed = (
             finite_state
             and gravity_matches
@@ -432,7 +458,7 @@ def simulate_physical_scene(document: dict[str, Any], *, repeat_check: bool = Fa
         invariant_profile = "p4_fixture"
     if not passed:
         raise RuntimeError(
-            "P4 rollout validation failed: "
+            "Newton rollout validation failed: "
             f"finite={finite_state}, gravity={gravity_matches}, time={time_monotonic}, "
             f"max_tether_error={max_error:.6g}, varying_axes={varying_axis_count}, "
             f"extent={spatial_extent:.6g}, profile={invariant_profile}"
@@ -445,10 +471,14 @@ def simulate_physical_scene(document: dict[str, Any], *, repeat_check: bool = Fa
         raise RuntimeError(
             f"Newton RUN_TO_RUN determinism check failed: {repeat_delta} > {repeat_tolerance}"
         )
-    warnings = [
-        "Newton XPBD enforces the distance joint numerically. See validation.tether_error_m."
-    ]
-    if observation_aligned and max_error > 1e-5:
+    warnings = []
+    if constraint is not None:
+        warnings.append(
+            "Newton XPBD enforces the distance joint numerically. See validation.tether_error_m."
+        )
+    else:
+        warnings.append("Unconstrained free-fall body. No distance joint is present.")
+    if observation_aligned and constraint is not None and max_error > 1e-5:
         warnings.append(
             "XPBD tether residual exceeds the P4 fixture 1e-5 check. "
             "The residual is reported. This is not a hidden pass."
@@ -486,7 +516,7 @@ def simulate_physical_scene(document: dict[str, Any], *, repeat_check: bool = Fa
                 "samples": body_samples,
             }
         ],
-        "constraints": [dict(constraint)],
+        "constraints": [dict(constraint)] if constraint is not None else [],
         "execution": {
             "status": "complete",
             "steps": first.steps,
@@ -502,10 +532,14 @@ def simulate_physical_scene(document: dict[str, Any], *, repeat_check: bool = Fa
             "time_monotonic": time_monotonic,
             "gravity_matches_contract": gravity_matches,
             "backend_gravity_m_s2": list(first.backend_gravity),
-            "tether_error_m": {
-                "maximum": max_error,
-                "rms": rms_error,
-            },
+            "tether_error_m": (
+                None
+                if constraint is None
+                else {
+                    "maximum": max_error,
+                    "rms": rms_error,
+                }
+            ),
             "body_position_range_m": {
                 "x": axis_ranges[0],
                 "y": axis_ranges[1],

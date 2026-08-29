@@ -41,11 +41,16 @@ from vision.reconstruction.contracts import (
 
 PROFILE = "tether_length_initial_tangent_velocity_v1"
 FIXED_LENGTH_PROFILE = "tether_initial_tangent_velocity_fixed_length_v1"
+FREE_FALL_PROFILE = "free_fall_gravity_v1"
 DEFAULT_SEED = 0x50545935
 DEFAULT_PARAMETERS = (
     ParameterSpec("rest_length_m", 1.6, 2.4, 1.78, "meter"),
     ParameterSpec("initial_tangent_velocity_u_m_s", -0.6, 0.6, -0.12, "meter_per_second"),
     ParameterSpec("initial_tangent_velocity_v_m_s", -0.6, 0.6, 0.14, "meter_per_second"),
+)
+FREE_FALL_PARAMETERS = (
+    ParameterSpec("gravity_magnitude_m_s2", 2.0, 20.0, 6.0, "meter_per_second_squared"),
+    ParameterSpec("initial_velocity_y_m_s", -6.0, 2.0, 0.0, "meter_per_second"),
 )
 SYNTHETIC_NORMALIZED_RMSE_LIMIT = 0.02
 REAL_SCENE_SOURCE_KINDS = {
@@ -63,6 +68,8 @@ def parameter_specs_for_profile(
 
     if profile == PROFILE:
         return DEFAULT_PARAMETERS
+    if profile == FREE_FALL_PROFILE:
+        return FREE_FALL_PARAMETERS
     if profile == FIXED_LENGTH_PROFILE:
         rest = DEFAULT_PARAMETERS[0]
         length = float(rest.initial if rest_length_m is None else rest_length_m)
@@ -166,6 +173,54 @@ def apply_tether_parameters(
         for axis in range(3)
     ]
     constraint["rest_length_m"] = rest_length
+    validate_physical_scene(scene)
+    return scene
+
+
+def observed_initial_velocity_y_m_s(samples: Sequence[Mapping[str, Any]]) -> float:
+    """Finite-difference vertical speed from the first two metric samples."""
+
+    if len(samples) < 2:
+        return 0.0
+    dt = float(samples[1]["timestamp_s"]) - float(samples[0]["timestamp_s"])
+    if dt <= 1e-9:
+        return 0.0
+    return (
+        float(samples[1]["position_m"][1]) - float(samples[0]["position_m"][1])
+    ) / dt
+
+
+def kinematic_free_fall_init(
+    samples: Sequence[Mapping[str, Any]],
+) -> tuple[float, float]:
+    """Least-squares (g, vy) from observed Y. Used only as a search start."""
+
+    if len(samples) < 3:
+        return 6.0, observed_initial_velocity_y_m_s(samples)
+    times = np.asarray([float(sample["timestamp_s"]) for sample in samples], dtype=np.float64)
+    heights = np.asarray([float(sample["position_m"][1]) for sample in samples], dtype=np.float64)
+    times = times - times[0]
+    design = np.column_stack((times, -0.5 * times * times))
+    try:
+        vy, gravity = np.linalg.lstsq(design, heights - heights[0], rcond=None)[0]
+    except np.linalg.LinAlgError:
+        return 6.0, observed_initial_velocity_y_m_s(samples)
+    if not math.isfinite(float(gravity)) or not math.isfinite(float(vy)):
+        return 6.0, observed_initial_velocity_y_m_s(samples)
+    return float(gravity), float(vy)
+
+
+def apply_free_fall_parameters(
+    template_scene: Mapping[str, Any],
+    values: Mapping[str, float],
+) -> dict[str, Any]:
+    """Set gravity magnitude and initial vertical velocity. Direction stays -Y."""
+
+    scene = copy.deepcopy(template_scene)
+    magnitude = float(values["gravity_magnitude_m_s2"])
+    velocity_y = float(values["initial_velocity_y_m_s"])
+    scene["world"]["gravity_m_s2"] = [0.0, -magnitude, 0.0]
+    scene["model"]["bodies"][0]["linear_velocity_m_s"] = [0.0, velocity_y, 0.0]
     validate_physical_scene(scene)
     return scene
 
@@ -499,6 +554,274 @@ def fit_tether_scene(
                 if motion["source"]["kind"] in REAL_SCENE_SOURCE_KINDS
                 else None
             ),
+        },
+        "profile": profile,
+        "objective": {
+            "type": "weighted_position_mse_3d",
+            "sample_count": len(samples),
+            **metrics,
+            "initial_mse_m2": search.initial_objective,
+            "improvement_ratio": (
+                search.initial_objective / max(metrics["mse_m2"], 1e-30)
+            ),
+        },
+        "parameters": _parameter_rows(
+            specs,
+            fitted=search.values,
+            truth=truth,
+        ),
+        "optimizer": {
+            "method": "bounded_differential_evolution_with_coordinate_refinement",
+            "seed": seed,
+            "population_size": population_size,
+            "generations": search.generations,
+            "coordinate_iterations": search.coordinate_iterations,
+            "objective_evaluations": search.objective_evaluations,
+        },
+        "outputs": {
+            "fitted_physical_scene": {
+                "uri": scene_path.name,
+                "sha256": scene_hash,
+            },
+            "simulated_world_state": {
+                "uri": rollout_path.name,
+                "sha256": rollout_hash,
+            },
+        },
+        "execution": {
+            "wall_seconds": time.perf_counter() - started,
+            "peak_gpu_memory_bytes": peak_gpu_memory,
+        },
+        "validation": {
+            "passed": validation_passed,
+            "rollout_valid": True,
+            "execution_valid": execution_valid,
+            "quality": quality,
+            "synthetic_recovery": {
+                "performed": truth is not None,
+                "within_tolerance": recovery_ok if truth is not None else None,
+                "max_normalized_parameter_error": max_parameter_error,
+            },
+        },
+        "blockers": [],
+        "warnings": warnings,
+        "failures": [],
+    }
+    validate_inverse_physics_fit(report)
+    validate_inverse_fit_artifacts(
+        report,
+        template,
+        motion,
+        fitted_scene,
+        rollout,
+        fitted_scene_path=scene_path,
+        rollout_path=rollout_path,
+    )
+    _atomic_write(output_dir / "inverse_physics_fit.json", _json_bytes(report))
+    return {
+        "fit": report,
+        "physical_scene": fitted_scene,
+        "rollout": rollout,
+        "motion_observation": motion,
+    }
+
+
+def fit_free_fall_scene(
+    template_scene: Mapping[str, Any],
+    motion_observation: Mapping[str, Any],
+    *,
+    output_dir: Path,
+    seed: int = DEFAULT_SEED,
+    population_size: int = 8,
+    generations: int = 4,
+    coordinate_iterations: int = 12,
+    repeat_check: bool = True,
+    profile: str = FREE_FALL_PROFILE,
+    parameters: Sequence[ParameterSpec] | None = None,
+) -> dict[str, Any]:
+    """Fit gravity magnitude and initial vertical velocity. Every eval runs Newton."""
+
+    if profile != FREE_FALL_PROFILE:
+        raise ValueError(f"unsupported free-fall profile {profile!r}")
+    template = dict(validate_physical_scene(template_scene))
+    motion = dict(validate_physical_motion_observation(motion_observation))
+    require_motion_matches_scene_alignment(template, motion)
+    if template["model"]["constraints"]:
+        raise ValueError("free-fall fit requires a PhysicalScene with zero constraints")
+    if parameters is not None:
+        specs = tuple(parameters)
+    else:
+        specs = parameter_specs_for_profile(profile)
+        gravity_guess, velocity_guess = kinematic_free_fall_init(motion["track"]["samples"])
+        initials = {
+            "gravity_magnitude_m_s2": gravity_guess,
+            "initial_velocity_y_m_s": velocity_guess,
+        }
+        specs = tuple(
+            ParameterSpec(
+                spec.id,
+                spec.lower_bound,
+                spec.upper_bound,
+                min(spec.upper_bound, max(spec.lower_bound, initials[spec.id])),
+                spec.unit,
+                spec.held_fixed,
+            )
+            for spec in specs
+        )
+    if any(spec.held_fixed for spec in specs):
+        raise ValueError("free-fall profile cannot hold a parameter fixed")
+    if motion["track"]["body_id"] != template["model"]["bodies"][0]["id"]:
+        raise ValueError("motion observation body_id does not match PhysicalScene")
+    samples = motion["track"]["samples"]
+    timestamps = [float(sample["timestamp_s"]) for sample in samples]
+    observed = np.asarray([sample["position_m"] for sample in samples], dtype=np.float64)
+    weights = np.asarray([sample["weight"] for sample in samples], dtype=np.float64)
+    if timestamps[0] < float(template["execution"]["start_time_s"]):
+        raise ValueError("motion observation starts before the PhysicalScene")
+    if timestamps[-1] > (
+        float(template["execution"]["start_time_s"])
+        + float(template["execution"]["duration_s"])
+        + 1e-12
+    ):
+        raise ValueError("motion observation ends after the PhysicalScene")
+
+    peak_gpu_memory = 0
+
+    def objective(values: tuple[float, ...]) -> float:
+        nonlocal peak_gpu_memory
+        candidate = apply_free_fall_parameters(
+            template,
+            {spec.id: values[index] for index, spec in enumerate(specs)},
+        )
+        run = simulate_body_positions(candidate, timestamps)
+        peak_gpu_memory = max(peak_gpu_memory, run.peak_gpu_memory_bytes)
+        simulated = np.asarray(run.positions_m, dtype=np.float64)
+        return _trajectory_metrics(observed, simulated, weights)["mse_m2"]
+
+    started = time.perf_counter()
+    search: SearchResult = bounded_differential_search(
+        objective,
+        specs,
+        seed=seed,
+        population_size=population_size,
+        generations=generations,
+        coordinate_iterations=coordinate_iterations,
+    )
+    fitted_values = {
+        spec.id: search.values[index]
+        for index, spec in enumerate(specs)
+    }
+    fitted_scene = apply_free_fall_parameters(template, fitted_values)
+    fitted_run = simulate_body_positions(fitted_scene, timestamps)
+    fitted_positions = np.asarray(fitted_run.positions_m, dtype=np.float64)
+    metrics = _trajectory_metrics(observed, fitted_positions, weights)
+    rollout = simulate_physical_scene(fitted_scene, repeat_check=repeat_check)
+    validate_rollout_source(rollout, fitted_scene)
+    peak_gpu_memory = max(
+        peak_gpu_memory,
+        fitted_run.peak_gpu_memory_bytes,
+        int(rollout["execution"]["peak_gpu_memory_bytes"]),
+    )
+
+    truth_raw = motion.get("provenance", {}).get("truth_parameters")
+    is_synthetic_source = (
+        motion["source"]["kind"] == "synthetic_rollout"
+        and motion.get("provenance", {}).get("synthetic") is True
+    )
+    if truth_raw is not None and not is_synthetic_source:
+        raise ValueError("truth_parameters are allowed only for synthetic rollout evidence")
+    truth = (
+        {
+            spec.id: float(truth_raw[spec.id])
+            for spec in specs
+        }
+        if isinstance(truth_raw, Mapping)
+        and all(spec.id in truth_raw for spec in specs)
+        else None
+    )
+    checked_specs = [spec for spec in specs if not spec.held_fixed]
+    normalized_errors = (
+        [
+            abs(fitted_values[spec.id] - truth[spec.id])
+            / (spec.upper_bound - spec.lower_bound)
+            for spec in checked_specs
+        ]
+        if truth is not None
+        else []
+    )
+    max_parameter_error = max(normalized_errors) if normalized_errors else None
+    recovery_ok = max_parameter_error is not None and max_parameter_error <= 0.03
+    warnings = [
+        "Mass is fixed because gravity-only free fall does not identify it.",
+        "Horizontal velocity stays at zero.",
+        "Search starts from a kinematic parabola on the observed Y samples.",
+        "IRIS gravity is evaluation ground truth only and is not used during fitting.",
+    ]
+    execution_valid = True
+    if is_synthetic_source:
+        quality = {
+            "status": "synthetic_checked",
+            "rmse_m": metrics["rmse_m"],
+            "normalized_rmse": metrics["normalized_rmse"],
+        }
+        validation_passed = (
+            metrics["normalized_rmse"] <= SYNTHETIC_NORMALIZED_RMSE_LIMIT
+            and (truth is None or recovery_ok)
+        )
+        if not validation_passed:
+            raise RuntimeError(
+                "free-fall fit failed validation: "
+                f"normalized_rmse={metrics['normalized_rmse']:.6g}, "
+                f"max_normalized_parameter_error={max_parameter_error}"
+            )
+    else:
+        quality = {
+            "status": "unassessed",
+            "rmse_m": metrics["rmse_m"],
+            "normalized_rmse": metrics["normalized_rmse"],
+        }
+        validation_passed = execution_valid
+        warnings.append(
+            "Real-fit quality is unassessed. RMSE is reported and is not a pass/fail."
+        )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    scene_bytes = _json_bytes(fitted_scene)
+    rollout_bytes = _json_bytes(rollout)
+    scene_path = output_dir / "fitted_physical_scene.json"
+    rollout_path = output_dir / "simulated_world_state.json"
+    _atomic_write(scene_path, scene_bytes)
+    _atomic_write(rollout_path, rollout_bytes)
+    scene_hash = hashlib.sha256(scene_bytes).hexdigest()
+    rollout_hash = hashlib.sha256(rollout_bytes).hexdigest()
+    template_hash = hashlib.sha256(canonical_json_bytes(template)).hexdigest()
+    motion_hash = hashlib.sha256(canonical_json_bytes(motion)).hexdigest()
+    identity = hashlib.sha256(
+        canonical_json_bytes(
+            {
+                "template": template_hash,
+                "motion": motion_hash,
+                "profile": profile,
+                "seed": seed,
+                "budget": [population_size, generations, coordinate_iterations],
+            }
+        )
+    ).hexdigest()
+    report = {
+        "schema": "phystwin.inverse_physics_fit",
+        "version": 1,
+        "fit_id": f"p5r-{identity[:12]}",
+        "status": "COMPLETE",
+        "source": {
+            "template_physical_scene": {
+                "id": template["scene_id"],
+                "sha256": template_hash,
+            },
+            "motion_observation": {
+                "id": motion["observation_id"],
+                "sha256": motion_hash,
+            },
+            "scene_observation": None,
         },
         "profile": profile,
         "objective": {

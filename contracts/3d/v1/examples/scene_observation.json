@@ -1,0 +1,144 @@
+{
+  "schema": "phystwin.scene_observation",
+  "version": 1,
+  "observation_id": "example-camera-and-scene",
+  "timeline": {
+    "time_unit": "second",
+    "origin": "observation_start",
+    "samples": [
+      {
+        "sample_index": 0,
+        "timestamp_s": 0.0,
+        "source_frames": {
+          "video0": 0
+        }
+      },
+      {
+        "sample_index": 1,
+        "timestamp_s": 0.03333333333333333,
+        "source_frames": {
+          "video0": 1
+        }
+      }
+    ]
+  },
+  "coordinates": {
+    "world_basis": "first_camera_graphics",
+    "handedness": "right",
+    "camera_convention": "opencv",
+    "transform_notation": "T_parent_child",
+    "vector_convention": "column",
+    "matrix_storage": "row_major",
+    "scale": {
+      "status": "relative",
+      "meters_per_world_unit": null,
+      "source": "estimator"
+    }
+  },
+  "sources": [
+    {
+      "id": "video0",
+      "kind": "video",
+      "uri": "input.mp4",
+      "media_type": "video/mp4",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "scene_geometry",
+      "uri": "artifacts/scene.glb",
+      "media_type": "model/gltf-binary",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ],
+  "cameras": [
+    {
+      "id": "camera0",
+      "source_id": "video0",
+      "projection": "pinhole",
+      "image_size_px": [
+        1920,
+        1080
+      ],
+      "intrinsics": {
+        "fx_px": 1200.0,
+        "fy_px": 1200.0,
+        "cx_px": 959.5,
+        "cy_px": 539.5,
+        "skew_px": 0.0
+      },
+      "poses": [
+        {
+          "sample_index": 0,
+          "T_world_camera": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "confidence": 0.9
+        },
+        {
+          "sample_index": 1,
+          "T_world_camera": [
+            1.0,
+            0.0,
+            0.0,
+            0.1,
+            0.0,
+            -1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "confidence": 0.85
+        }
+      ]
+    }
+  ],
+  "static_scene": {
+    "geometry": [
+      {
+        "kind": "mesh",
+        "artifact_id": "scene_geometry"
+      }
+    ]
+  },
+  "provenance": {
+    "created_utc": "2026-08-28T00:00:00Z",
+    "producer": {
+      "adapter": "example",
+      "adapter_version": "0.0.0",
+      "model": "none",
+      "model_revision": "none",
+      "weights_sha256": null
+    },
+    "options": {},
+    "runtime": {
+      "wall_seconds": null,
+      "device": null,
+      "peak_gpu_memory_bytes": null
+    }
+  },
+  "extensions": {}
+}

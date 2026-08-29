@@ -138,12 +138,43 @@ when footage is missing.
 - 3 to 8 seconds
 - ball or weight on a string or rope
 - visible anchor and object
-- noticeable out-of-plane motion
+- nontrivial spatial motion. Planar pendulums are allowed
 - known tether length in meters
 - limited blur and occlusion
 
 Do not guess an object diameter. Do not treat cinematic footage as the
 correctness baseline.
+
+## IRIS first real source
+
+The first real P5R clip is IRIS `Pendulum/pendulum_45/01.mp4` from
+`rasulkhanbayov/IRIS`. Evidence kind is `external_dataset`, not
+`recorded_real`.
+
+Download stays under `datasets/IRIS/` and is gitignored.
+
+```powershell
+.\.venv\Scripts\python.exe vision\prepare_real_motion.py --iris --output results\physics3d\p5r-real-fit
+.\.venv-physics\Scripts\python.exe -m physics3d.fit_physical_scene `
+  results\physics3d\p5r-real-fit\aligned_physical_scene_template.json `
+  --motion-observation results\physics3d\p5r-real-fit\target_motion_observation.json `
+  --output results\physics3d\p5r-real-fit
+```
+
+`parameters.json` `pendulum.pendulum_45.rope_length` is `0.50 m`. That value
+sets metric scale and holds `rest_length_m` fixed. PhysTwin does not claim an
+independent rope-length recovery.
+
+Seed pixels for that clip are in
+`contracts/3d/v1/examples/p5r_iris_pendulum_45_01.json`. Prepare starts at
+`t=2.0 s` so the hand is no longer on the ball.
+
+Physical up for this run is `level_camera` / `assumed`.
+
+Observation-aligned rollouts keep the P4 fixture 1e-5 / 3-axis checks
+off. They still record the real XPBD tether residual and AABB travel.
+A planar swing is allowed. A P4 standalone fixture still has to meet
+the original 1e-5 and 3-axis invariants.
 
 ## P3 note
 

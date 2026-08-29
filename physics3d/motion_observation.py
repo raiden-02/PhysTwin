@@ -22,6 +22,8 @@ from vision.reconstruction.entities import (
 from vision.reconstruction.humans import HUMANS_EXTENSION, validate_humans_v1
 from vision.reconstruction.transforms import transform_point
 
+MIN_SPATIAL_EXTENT_M = 0.02
+
 
 class FitInputBlocked(RuntimeError):
     """The available observation cannot support an honest metric P5 fit."""
@@ -29,6 +31,42 @@ class FitInputBlocked(RuntimeError):
     def __init__(self, blockers: list[str]) -> None:
         super().__init__("; ".join(blockers))
         self.blockers = tuple(blockers)
+
+
+def axis_ranges_m(samples: list[Mapping[str, Any]]) -> list[float]:
+    """AABB side lengths of body-origin samples, in meters."""
+
+    return [
+        max(sample["position_m"][axis] for sample in samples)
+        - min(sample["position_m"][axis] for sample in samples)
+        for axis in range(3)
+    ]
+
+
+def spatial_extent_m(samples: list[Mapping[str, Any]]) -> float:
+    """AABB diagonal. Full 3D state. Planar travel still counts."""
+
+    ranges = axis_ranges_m(samples)
+    return math.sqrt(sum(value * value for value in ranges))
+
+
+def require_nontrivial_spatial_motion(
+    samples: list[Mapping[str, Any]],
+    *,
+    label: str,
+) -> None:
+    """Block near-stationary tracks. Do not require travel on every axis."""
+
+    ranges = axis_ranges_m(samples)
+    extent = math.sqrt(sum(value * value for value in ranges))
+    if extent < MIN_SPATIAL_EXTENT_M:
+        raise FitInputBlocked(
+            [
+                f"{label} requires at least {MIN_SPATIAL_EXTENT_M} m of spatial travel "
+                f"(AABB diagonal). Planar motion is allowed. Degenerate tracks are not. "
+                f"got extent={extent:.6g} ranges={ranges}"
+            ]
+        )
 
 
 def motion_observation_from_rollout(
@@ -470,18 +508,7 @@ def motion_observation_from_entities(
                 "weight": 1.0,
             }
         )
-    ranges = [
-        max(sample["position_m"][axis] for sample in samples)
-        - min(sample["position_m"][axis] for sample in samples)
-        for axis in range(3)
-    ]
-    if any(value < 0.02 for value in ranges):
-        raise FitInputBlocked(
-            [
-                "P5R requires at least 0.02 m observed variation on X, Y, and Z; "
-                f"got {ranges}"
-            ]
-        )
+    require_nontrivial_spatial_motion(samples, label="P5R")
 
     observation_hash = hashlib.sha256(canonical_json_bytes(observation)).hexdigest()
     document = {
@@ -514,6 +541,8 @@ def motion_observation_from_entities(
                 "alignment_source"
             ),
             "calibration": observation.get("provenance", {}).get("metric_calibration"),
+            "evidence_kind": observation.get("provenance", {}).get("evidence_kind"),
+            "dataset": observation.get("provenance", {}).get("dataset"),
         },
         "warnings": [
             "The P5R body is a passive rigid proxy for the lifted object centroid."

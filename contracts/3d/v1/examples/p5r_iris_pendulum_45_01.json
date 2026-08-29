@@ -1,0 +1,22 @@
+{
+  "schema": "phystwin.p5r_iris_clip",
+  "version": 1,
+  "dataset": "IRIS",
+  "evidence_kind": "external_dataset",
+  "repo_id": "rasulkhanbayov/IRIS",
+  "source_url": "https://huggingface.co/datasets/rasulkhanbayov/IRIS",
+  "class_key": "pendulum",
+  "setting_key": "pendulum_45",
+  "relative_video": "Pendulum/pendulum_45/01.mp4",
+  "start_s": 2.0,
+  "duration_s": 4.0,
+  "max_frames": 16,
+  "from_physical_point": "body_center",
+  "to_physical_point": "anchor",
+  "circular_with": "rest_length_m",
+  "up_mode": "level_camera",
+  "up_source": "assumed",
+  "target_xy": [1746.4, 1901.1],
+  "anchor_xy": [2039.0, 92.0],
+  "seed_notes": "Pixels on the 3840x2160 frame at t=2.0 s. Target is the tennis-ball bob. Anchor is the top clamp. Frame 0 still has a hand on the ball."
+}

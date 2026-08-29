@@ -576,9 +576,74 @@ class HashContinuityTest(unittest.TestCase):
 
     def test_inspect_local_footage_does_not_invent_eligibility(self) -> None:
         review = inspect_local_footage(ROOT)
-        self.assertEqual(review["status"], "AWAITING_FOOTAGE")
-        self.assertEqual(review["eligible"], [])
         self.assertTrue(any(item["id"] == "pendulum" for item in review["rejected"]))
+        self.assertFalse(any(item["id"] == "pendulum" and item["eligible"] for item in review["eligible"]))
+        iris = next(
+            item
+            for item in [*review["eligible"], *review["rejected"]]
+            if item["id"] == "iris_pendulum_45_01"
+        )
+        self.assertEqual(iris["kind"], "external_dataset")
+        if iris["present"]:
+            self.assertTrue(iris["eligible"])
+            self.assertAlmostEqual(iris["known_length_m"], 0.50)
+            self.assertEqual(review["status"], "READY")
+        else:
+            self.assertFalse(iris["eligible"])
+            self.assertIsNone(iris["known_length_m"])
+
+
+class PlanarMotionGateTest(unittest.TestCase):
+    def test_planar_xy_motion_is_accepted(self) -> None:
+        observation, template = _eligible_pair(scale_source="relative", motion="planar")
+        calibration = build_known_distance_calibration(
+            calibration_id="tape-tether",
+            entities=observation["extensions"]["phystwin.entities.v1"],
+            from_id="target",
+            to_id="anchor",
+            measured_length_m=2.0,
+            measurement_source="tape measure 2026-08-29",
+            circular_with_fit_parameter="rest_length_m",
+            **TETHER_POINTS,
+        )
+        observation = apply_measured_scale(observation, calibration)
+        template["model"]["constraints"][0]["rest_length_m"] = 2.0
+        template = stamp_observation_alignment(
+            template,
+            observation,
+            entity_id="target",
+            anchor_id="anchor",
+            physical_up=LEVEL_CAMERA,
+        )
+        motion = motion_observation_from_entities(observation, template, entity_id="target")
+        samples = motion["track"]["samples"]
+        zs = [sample["position_m"][2] for sample in samples]
+        self.assertLess(max(zs) - min(zs), 0.02)
+
+    def test_stationary_track_is_blocked(self) -> None:
+        observation, template = _eligible_pair(scale_source="relative", motion="still")
+        calibration = build_known_distance_calibration(
+            calibration_id="tape-tether",
+            entities=observation["extensions"]["phystwin.entities.v1"],
+            from_id="target",
+            to_id="anchor",
+            measured_length_m=2.0,
+            measurement_source="tape measure 2026-08-29",
+            circular_with_fit_parameter="rest_length_m",
+            **TETHER_POINTS,
+        )
+        observation = apply_measured_scale(observation, calibration)
+        template["model"]["constraints"][0]["rest_length_m"] = 2.0
+        template = stamp_observation_alignment(
+            template,
+            observation,
+            entity_id="target",
+            anchor_id="anchor",
+            physical_up=LEVEL_CAMERA,
+        )
+        with self.assertRaises(FitInputBlocked) as raised:
+            motion_observation_from_entities(observation, template, entity_id="target")
+        self.assertTrue(any("spatial travel" in item for item in raised.exception.blockers))
 
 
 class FitQualitySemanticsTest(unittest.TestCase):
@@ -651,25 +716,19 @@ def _real_complete_fit_report(*, rmse_m: float, normalized_rmse: float) -> dict:
     return report
 
 
-def _entity_tracks() -> dict:
+def _entity_tracks(*, motion: str = "xyz") -> dict:
     target = []
     anchor = []
     for index in range(12):
         t = index / 11.0
-        target.append(
-            {
-                "sample_index": index,
-                "root": [0.4 + 0.2 * t, -1.0 + 0.3 * math.sin(t * math.pi), -2.0 - 0.25 * t],
-                "visible": True,
-            }
-        )
-        anchor.append(
-            {
-                "sample_index": index,
-                "root": [0.0, 1.0, -2.0],
-                "visible": True,
-            }
-        )
+        if motion == "planar":
+            root = [0.4 + 0.25 * t, -1.0 + 0.35 * math.sin(t * math.pi), -2.0]
+        elif motion == "still":
+            root = [0.4, -1.0, -2.0]
+        else:
+            root = [0.4 + 0.2 * t, -1.0 + 0.3 * math.sin(t * math.pi), -2.0 - 0.25 * t]
+        target.append({"sample_index": index, "root": root, "visible": True})
+        anchor.append({"sample_index": index, "root": [0.0, 1.0, -2.0], "visible": True})
     return entities_payload(
         [
             entity_payload("target", "object", target),
@@ -678,7 +737,7 @@ def _entity_tracks() -> dict:
     )
 
 
-def _eligible_pair(*, scale_source: str = "known_scene_distance"):
+def _eligible_pair(*, scale_source: str = "known_scene_distance", motion: str = "xyz"):
     observation = copy.deepcopy(load_contract(EXAMPLES / "scene_observation.json"))
     samples = []
     poses = []
@@ -710,7 +769,7 @@ def _eligible_pair(*, scale_source: str = "known_scene_distance"):
             "meters_per_world_unit": 1.0,
             "source": scale_source,
         }
-    observation = attach_entities(observation, _entity_tracks())
+    observation = attach_entities(observation, _entity_tracks(motion=motion))
     template = copy.deepcopy(load_contract(EXAMPLES / "physical_scene_tether_fit_template.json"))
     template["model"]["constraints"][0]["body_attachment_m"] = [0.0, 0.0, 0.0]
     return observation, template

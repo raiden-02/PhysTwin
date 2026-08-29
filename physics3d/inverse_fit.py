@@ -70,10 +70,23 @@ def parameter_specs_for_profile(
         upper = max(rest.upper_bound, length)
         if not lower < upper:
             lower, upper = length - 0.05, length + 0.05
+        speed = max(0.6, 1.25 * math.sqrt(2.0 * 9.80665 * max(length, 1e-6)))
         return (
             ParameterSpec(rest.id, lower, upper, length, rest.unit, True),
-            DEFAULT_PARAMETERS[1],
-            DEFAULT_PARAMETERS[2],
+            ParameterSpec(
+                DEFAULT_PARAMETERS[1].id,
+                -speed,
+                speed,
+                DEFAULT_PARAMETERS[1].initial,
+                DEFAULT_PARAMETERS[1].unit,
+            ),
+            ParameterSpec(
+                DEFAULT_PARAMETERS[2].id,
+                -speed,
+                speed,
+                DEFAULT_PARAMETERS[2].initial,
+                DEFAULT_PARAMETERS[2].unit,
+            ),
         )
     raise ValueError(f"unsupported fit profile {profile!r}")
 

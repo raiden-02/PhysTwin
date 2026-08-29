@@ -40,6 +40,9 @@ samples/**/*.avi
 samples/**/*.mkv
 samples/**/*.webm
 
+# External datasets (IRIS and others). Do not commit media.
+datasets/
+
 # Results generated locally (keep .gitkeep)
 results/*
 !results/.gitkeep

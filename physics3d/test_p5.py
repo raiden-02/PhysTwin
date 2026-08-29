@@ -17,6 +17,7 @@ from physics3d.inverse_fit import (
     apply_tether_parameters,
     blocked_fit_report,
     fit_tether_scene,
+    parameter_specs_for_profile,
     refuse_circular_length_fit,
     select_real_fit_profile,
 )
@@ -114,6 +115,13 @@ class P5ContractAndSearchTest(unittest.TestCase):
         )
         self.assertAlmostEqual(result.values[0], -1.5, places=12)
         self.assertLess(abs(result.values[1] + 0.5), 1e-4)
+
+    def test_fixed_length_profile_widens_velocity_for_short_tether(self) -> None:
+        specs = parameter_specs_for_profile(FIXED_LENGTH_PROFILE, rest_length_m=0.50)
+        self.assertTrue(specs[0].held_fixed)
+        self.assertAlmostEqual(specs[0].initial, 0.50)
+        self.assertGreater(specs[1].upper_bound, 0.6)
+        self.assertLess(specs[1].lower_bound, -0.6)
 
     def test_circular_tether_calibration_refuses_length_fit(self) -> None:
         calibration = {"circular_with_fit_parameter": "rest_length_m"}

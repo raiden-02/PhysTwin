@@ -63,7 +63,8 @@ pass:
 - the `humans.v1` pelvis track is valid
 - at least 12 visible samples cover at least 0.5 seconds
 - the physical body attachment is the body origin
-- transformed motion varies by at least `0.02 m` on X, Y, and Z
+- transformed human motion varies by at least `0.02 m` on X, Y, and Z
+- P5R entity motion needs `0.02 m` AABB-diagonal travel. Planar paths are allowed
 
 Scale is applied before `T_scene_observation_m`, as defined by the 3D
 architecture.

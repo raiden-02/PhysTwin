@@ -1,0 +1,119 @@
+{
+  "schema": "phystwin.p5r_iris_run_record",
+  "version": 1,
+  "fit_id": "p5-359580f85437",
+  "date_utc": "2026-08-29",
+  "status": "COMPLETE",
+  "quality_status": "unassessed",
+  "execution_valid": true,
+  "independent_rope_length_recovery": false,
+  "verdict": "execution_valid_quality_unassessed_residual_poor",
+  "proceed_to_p7": false,
+  "provenance": {
+    "evidence_kind": "external_dataset",
+    "dataset": "IRIS",
+    "repo_id": "rasulkhanbayov/IRIS",
+    "source_url": "https://huggingface.co/datasets/rasulkhanbayov/IRIS",
+    "relative_video": "Pendulum/pendulum_45/01.mp4",
+    "video_sha256": "81a992154a84c4ea3c354c1025f7ff8ad8ca0ff13f885ff2acbd21180c87a155",
+    "clip_config": "contracts/3d/v1/examples/p5r_iris_pendulum_45_01.json",
+    "start_s": 2.0,
+    "duration_s": 4.0,
+    "max_frames": 16,
+    "sample_count": 16,
+    "iris_rope_length_m": 0.5,
+    "iris_angle_deg": 45.0,
+    "iris_camera_to_cable_m": 0.96,
+    "metric_calibration": "IRIS parameters.json pendulum.pendulum_45.rope_length mean 0.50 m",
+    "held_fixed_parameter": "rest_length_m",
+    "from_physical_point": "body_center",
+    "to_physical_point": "anchor",
+    "physical_up_mode": "level_camera",
+    "physical_up_source": "assumed",
+    "profile": "tether_initial_tangent_velocity_fixed_length_v1",
+    "local_artifacts_dir": "results/physics3d/p5r-real-fit",
+    "artifacts_committed": false
+  },
+  "lifts": {
+    "accepted": 32,
+    "rejected": 0
+  },
+  "observation_ranges_m": {
+    "x": 0.28554908249036837,
+    "y": 0.032998408226929676,
+    "z": 0.14036829613699509,
+    "aabb_diagonal": 0.31989128155829044
+  },
+  "newton_body_position_range_m": {
+    "x": 0.07439291663467884,
+    "y": 0.5323567390441895,
+    "z": 0.8347650170326233
+  },
+  "objective": {
+    "type": "weighted_position_mse_3d",
+    "initial_mse_m2": 0.3797279659079891,
+    "mse_m2": 0.3796852459535801,
+    "rmse_m": 0.6161860481653086,
+    "trajectory_extent_m": 0.31989128155829044,
+    "normalized_rmse": 1.9262358297596414,
+    "improvement_ratio": 1.0001125141281213
+  },
+  "parameters": {
+    "rest_length_m": {
+      "fitted": 0.5,
+      "held_fixed": true,
+      "reason": "IRIS rope_length 0.50 m set metric scale"
+    },
+    "initial_tangent_velocity_u_m_s": {
+      "initial": -0.12,
+      "fitted": -3.9144464008337114,
+      "held_fixed": false,
+      "hit_bound": true
+    },
+    "initial_tangent_velocity_v_m_s": {
+      "initial": 0.14,
+      "fitted": -1.2373242280147347,
+      "held_fixed": false,
+      "hit_bound": false
+    }
+  },
+  "xpbd_tether_error_m": {
+    "maximum": 0.2999401616787766,
+    "rms": 0.17324827251379668
+  },
+  "optimizer": {
+    "method": "bounded_differential_evolution_with_coordinate_refinement",
+    "objective_evaluations": 76,
+    "seed": 1347705141,
+    "population_size": 8,
+    "generations": 4,
+    "coordinate_iterations": 12
+  },
+  "runtime": {
+    "fit_wall_seconds": 225.99638079991564,
+    "final_rollout_wall_seconds": 2.8789036000380293,
+    "gpu": "NVIDIA GeForce RTX 4080 SUPER",
+    "peak_gpu_memory_bytes": 70706
+  },
+  "hashes": {
+    "scene_observation_sha256": "d6839c1e81106f31560d00a5210fdc7e090f84d359f7ffb946f102d3705e23c1",
+    "physical_motion_observation_sha256": "7157a0d607faf1eb860c5f7783d4ac5dce92ed6dee1e3e54206b071673f7c9ad",
+    "inverse_physics_fit_sha256": "7b0dd5e28792e9a0aec79a480c08682b788f2812b73e0b50d7198f04fa8ef0e7",
+    "template_physical_scene_sha256": "79b26b95f3608b3b5ba20b870ff12847122119ca82d0c969b78df49c3bd450c8",
+    "fitted_physical_scene_sha256": "5f47bad87f667df50a023ab32c1154d7e053fc92212af1ffd9540028b4f99ae0",
+    "simulated_world_state_sha256": "9da3ea76f59c26f14fc3120b468ac2efadb6c7fd7ddab669a8e979b8693e5192"
+  },
+  "warnings": [
+    "Mass is fixed because gravity-only ideal tether motion does not identify it.",
+    "Damping is not fitted because the P4 runtime has no validated damping parameter.",
+    "Real-fit quality is unassessed. RMSE is reported and is not a pass/fail.",
+    "held_fixed parameters were not independently recovered by the optimizer.",
+    "Newton XPBD enforces the distance joint numerically. See validation.tether_error_m.",
+    "XPBD tether residual exceeds the P4 fixture 1e-5 check. The residual is reported. This is not a hidden pass.",
+    "The P5R body is a passive rigid proxy for the lifted object centroid."
+  ],
+  "overlay": {
+    "same_qualitative_motion": false,
+    "note": "Blue observed samples stay in a 0.32 m nearly-horizontal cluster. Orange Newton path swings 0.53 m in Y and 0.83 m in Z and does not follow the observed path."
+  }
+}

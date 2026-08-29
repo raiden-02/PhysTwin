@@ -29,6 +29,7 @@ export function PhysicsApp() {
   const [error, setError] = useState<string | null>(null);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [showFootage, setShowFootage] = useState(false);
 
   useEffect(() => {
     if (!playing || !result || !("rollout" in result) || !result.rollout) return;
@@ -70,6 +71,7 @@ export function PhysicsApp() {
     try {
       const next = await inspectPhysicsRealFit();
       setResult(next);
+      setShowFootage(true);
       if (next.rollout) {
         setTime(next.rollout.timeline.start_time_s);
       }
@@ -80,6 +82,11 @@ export function PhysicsApp() {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!showFootage) return;
+    document.getElementById("p5r-footage")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [showFootage, result]);
 
   useEffect(() => {
     void fetchPhysicsRealFit()
@@ -134,7 +141,6 @@ export function PhysicsApp() {
   }
 
   if ("footage" in result && !result.rollout) {
-    const requested = result.requested_clip;
     return (
       <section className="result">
         {error ? <div className="banner bad">{error}</div> : null}
@@ -148,58 +154,10 @@ export function PhysicsApp() {
             Run P5 fit
           </button>
           <button type="button" disabled={busy} onClick={() => void inspectRealFit()}>
-            Recheck footage
+            {busy ? "Checking footage..." : "Recheck footage"}
           </button>
         </div>
-        <div className="verdict">
-          <strong>Waiting for a measured tether clip</strong>
-          <span>
-            Local videos were inspected. None have a tape-measured length in meters, so
-            scale stays unmarked and Newton is not run.
-          </span>
-        </div>
-        <div className="pane">
-          <h2>Requested clip</h2>
-          <dl className="kv">
-            <dt>duration</dt>
-            <dd>
-              {requested.duration_s.min}–{requested.duration_s.max} s
-            </dd>
-            <dt>subject</dt>
-            <dd>{requested.subject}</dd>
-            <dt>must show</dt>
-            <dd>{requested.must_show.join(", ")}</dd>
-            <dt>motion</dt>
-            <dd>{requested.motion}</dd>
-            <dt>measurement</dt>
-            <dd>{requested.measurement}</dd>
-            <dt>quality</dt>
-            <dd>{requested.quality}</dd>
-          </dl>
-          <p className="hint">
-            Do not guess an object diameter. Do not use cinematic footage as the
-            correctness baseline.
-          </p>
-        </div>
-        <div className="pane">
-          <h2>Local clips</h2>
-          <dl className="kv">
-            {result.footage.rejected.map((clip) => (
-              <div key={clip.id}>
-                <dt>{clip.id}</dt>
-                <dd>
-                  {clip.present ? "present" : "missing"} · {clip.reason}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-        {result.fit ? (
-          <div className="pane">
-            <h2>Last blocked report</h2>
-            <p className="hint">{result.fit.blockers.join(" ")}</p>
-          </div>
-        ) : null}
+        <FootageReview result={result} />
       </section>
     );
   }
@@ -233,9 +191,10 @@ export function PhysicsApp() {
           Run P5 fit
         </button>
         <button type="button" disabled={busy} onClick={() => void inspectRealFit()}>
-          Inspect P5R
+          {busy ? "Checking footage..." : "Inspect P5R"}
         </button>
       </div>
+      {showFootage && realFit ? <FootageReview result={realFit} /> : null}
 
       <div className="pane media physics-pane">
         <h2>{fitReport ? "Observed and fitted 3D motion" : "Simulated 3D rollout"}</h2>
@@ -376,5 +335,78 @@ export function PhysicsApp() {
         </dl>
       </div>
     </section>
+  );
+}
+
+function FootageReview({ result }: { result: PhysicsRealFitResult }) {
+  const eligible = result.footage.eligible;
+  const rejected = result.footage.rejected;
+  const requested = result.requested_clip;
+  const ready = eligible.length > 0;
+  return (
+    <div id="p5r-footage">
+      <div className="verdict">
+        <strong>
+          {ready
+            ? result.rollout
+              ? "IRIS clip is eligible. Showing the saved Newton overlay."
+              : "IRIS clip is eligible. No saved overlay is loaded."
+            : "Waiting for a measured tether clip"}
+        </strong>
+        <span>
+          {ready
+            ? eligible.map((clip) => `${clip.id}: ${clip.reason}`).join(" ")
+            : "Local recorded clips have no tape-measured length. IRIS is the first allowed external_dataset source."}
+        </span>
+      </div>
+      <div className="pane">
+        <h2>Eligible clips</h2>
+        <dl className="kv">
+          {eligible.length === 0 ? (
+            <div>
+              <dt>none</dt>
+              <dd>No eligible clip is on disk.</dd>
+            </div>
+          ) : (
+            eligible.map((clip) => (
+              <div key={clip.id}>
+                <dt>{clip.id}</dt>
+                <dd>
+                  {clip.kind} · {clip.known_length_m} m · {clip.reason}
+                </dd>
+              </div>
+            ))
+          )}
+        </dl>
+      </div>
+      <div className="pane">
+        <h2>Requested clip</h2>
+        <dl className="kv">
+          <dt>duration</dt>
+          <dd>
+            {requested.duration_s.min}–{requested.duration_s.max} s
+          </dd>
+          <dt>subject</dt>
+          <dd>{requested.subject}</dd>
+          <dt>motion</dt>
+          <dd>{requested.motion}</dd>
+          <dt>measurement</dt>
+          <dd>{requested.measurement}</dd>
+        </dl>
+      </div>
+      <div className="pane">
+        <h2>Other local clips</h2>
+        <dl className="kv">
+          {rejected.map((clip) => (
+            <div key={clip.id}>
+              <dt>{clip.id}</dt>
+              <dd>
+                {clip.present ? "present" : "missing"} · {clip.reason}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </div>
   );
 }

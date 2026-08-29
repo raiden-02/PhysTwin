@@ -661,10 +661,14 @@ def validate_simulated_world_state(document: Any) -> Mapping[str, Any]:
         sum(error * error for error in computed_tether_errors) / len(computed_tether_errors)
     )
     if (
-        maximum > 1e-5
-        or not math.isclose(maximum, computed_maximum, abs_tol=1e-9)
+        not math.isclose(maximum, computed_maximum, abs_tol=1e-9)
         or not math.isclose(rms, computed_rms, abs_tol=1e-9)
     ):
+        raise ContractError("recorded tether error does not match body transforms")
+    invariant_profile = validation.get("invariant_profile", "p4_fixture")
+    if invariant_profile not in {"p4_fixture", "observation_aligned"}:
+        raise ContractError("validation.invariant_profile: unsupported")
+    if invariant_profile == "p4_fixture" and maximum > 1e-5:
         raise ContractError("recorded tether error does not match body transforms")
     position_ranges = _mapping(
         validation.get("body_position_range_m"),
@@ -679,15 +683,22 @@ def validate_simulated_world_state(document: Any) -> Mapping[str, Any]:
     for axis, computed in zip(("x", "y", "z"), computed_ranges):
         if not math.isclose(_finite(position_ranges.get(axis), f"body_position_range_m.{axis}"), computed, abs_tol=1e-9):
             raise ContractError("recorded body position range does not match body transforms")
-    if (
-        _integer(
-            position_ranges.get("varying_axis_count_at_0_05_m"),
-            "varying_axis_count_at_0_05_m",
+    recorded_varying = _integer(
+        position_ranges.get("varying_axis_count_at_0_05_m"),
+        "varying_axis_count_at_0_05_m",
+    )
+    expected_varying = sum(value >= 0.05 for value in computed_ranges)
+    if recorded_varying != expected_varying:
+        raise ContractError("recorded varying-axis count does not match body transforms")
+    spatial_extent = math.sqrt(sum(value * value for value in computed_ranges))
+    if invariant_profile == "p4_fixture":
+        if recorded_varying != 3 or any(value < 0.05 for value in computed_ranges):
+            raise ContractError("P4 rollout must vary by at least 0.05 m on X, Y, and Z")
+    elif spatial_extent < 0.02:
+        raise ContractError(
+            "observation-aligned rollout needs at least 0.02 m of spatial travel. "
+            "Planar motion is allowed."
         )
-        != 3
-        or any(value < 0.05 for value in computed_ranges)
-    ):
-        raise ContractError("P4 rollout must vary by at least 0.05 m on X, Y, and Z")
 
     reproducibility = _mapping(root["reproducibility"], "SimulatedWorldState.reproducibility")
     if reproducibility.get("stochastic_components") is not False:

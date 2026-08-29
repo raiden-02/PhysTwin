@@ -5,12 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .iris import iris_benchmark_review
+
 
 REQUESTED_CLIP: dict[str, Any] = {
     "duration_s": {"min": 3, "max": 8},
     "subject": "ball or weight on a string or rope",
     "must_show": ["anchor", "object"],
-    "motion": "noticeable out-of-plane motion, not a perfectly planar pendulum",
+    "motion": "nontrivial spatial motion. Planar pendulums are allowed.",
     "measurement": (
         "tape-measured tether length in meters, or another clearly measured "
         "scene distance in meters"
@@ -79,7 +81,7 @@ def inspect_local_footage(root: Path) -> dict[str, Any]:
             present
             and item["tethered"]
             and item["known_length_m"] is not None
-            and item["kind"] == "recorded"
+            and item["kind"] in {"recorded", "external_dataset"}
         )
         reviewed.append(
             {
@@ -95,6 +97,8 @@ def inspect_local_footage(root: Path) -> dict[str, Any]:
                 else f"{item['path'].name} is not on disk",
             }
         )
+    iris = iris_benchmark_review(root)
+    reviewed.append(iris)
     eligible = [item for item in reviewed if item["eligible"]]
     return {
         "status": "READY" if eligible else "AWAITING_FOOTAGE",

@@ -32,6 +32,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="classify local clips and print the requested measurement. No GPU.",
     )
+    parser.add_argument(
+        "--iris",
+        action="store_true",
+        help="use the IRIS pendulum_45/01 external-dataset benchmark",
+    )
     parser.add_argument("--video", type=Path)
     parser.add_argument("--target-xy", nargs=2, type=float, metavar=("U", "V"))
     parser.add_argument("--anchor-xy", nargs=2, type=float, metavar=("U", "V"))
@@ -79,9 +84,9 @@ def parse_args() -> argparse.Namespace:
         help="rest_length_m when the measured distance is the tether itself",
     )
     parser.add_argument("--source-id", default="video0")
-    parser.add_argument("--start-s", type=float, default=0.0)
-    parser.add_argument("--duration-s", type=float, default=4.0)
-    parser.add_argument("--max-frames", type=int, default=16)
+    parser.add_argument("--start-s", type=float, default=None)
+    parser.add_argument("--duration-s", type=float, default=None)
+    parser.add_argument("--max-frames", type=int, default=None)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--output", type=Path, default=ROOT / "results" / "physics3d" / "p5r-real-fit")
     parser.add_argument("--template", type=Path, default=TEMPLATE)
@@ -90,7 +95,51 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    if args.inspect or args.video is None:
+    if args.inspect:
+        payload = inspect_local_footage(ROOT)
+        print(json.dumps(payload, indent=2))
+        return 0 if payload["status"] == "READY" else 2
+
+    iris_benchmark = None
+    iris_calibration_extra: dict[str, Any] = {}
+    if args.iris:
+        from vision.reconstruction.iris import (
+            calibration_provenance,
+            load_iris_pendulum_benchmark,
+        )
+
+        iris_benchmark = load_iris_pendulum_benchmark(ROOT)
+        iris_calibration_extra = calibration_provenance(iris_benchmark)
+        if args.video is None:
+            args.video = iris_benchmark["video"]
+        if args.target_xy is None:
+            args.target_xy = iris_benchmark["target_xy"]
+        if args.anchor_xy is None:
+            args.anchor_xy = iris_benchmark["anchor_xy"]
+        if args.known_distance_m is None:
+            args.known_distance_m = iris_benchmark["rope_length_m"]
+        if not args.measurement_source:
+            args.measurement_source = iris_benchmark["measurement_source"]
+        args.from_physical_point = iris_benchmark["from_physical_point"]
+        args.to_physical_point = iris_benchmark["to_physical_point"]
+        args.circular_with = iris_benchmark["circular_with"]
+        args.up_mode = iris_benchmark["up_mode"]
+        args.up_source = iris_benchmark["up_source"]
+        if args.start_s is None:
+            args.start_s = iris_benchmark["start_s"]
+        if args.duration_s is None:
+            args.duration_s = iris_benchmark["duration_s"]
+        if args.max_frames is None:
+            args.max_frames = iris_benchmark["max_frames"]
+
+    if args.start_s is None:
+        args.start_s = 0.0
+    if args.duration_s is None:
+        args.duration_s = 4.0
+    if args.max_frames is None:
+        args.max_frames = 16
+
+    if args.video is None:
         payload = inspect_local_footage(ROOT)
         print(json.dumps(payload, indent=2))
         return 0 if payload["status"] == "READY" else 2
@@ -210,9 +259,26 @@ def main() -> int:
         circular_with_fit_parameter=circular,
         from_physical_point=args.from_physical_point,
         to_physical_point=args.to_physical_point,
-        provenance={"video": video.name},
+        provenance={
+            "video": video.name,
+            **(iris_calibration_extra if iris_benchmark is not None else {}),
+        },
     )
     observation = apply_measured_scale(observation, calibration)
+    if iris_benchmark is not None:
+        provenance = dict(observation.get("provenance") or {})
+        provenance["evidence_kind"] = iris_benchmark["evidence_kind"]
+        provenance["dataset"] = iris_benchmark["dataset"]
+        provenance["iris"] = {
+            "repo_id": iris_benchmark["repo_id"],
+            "source_url": iris_benchmark["source_url"],
+            "relative_video": iris_benchmark["relative_video"],
+            "class_key": iris_benchmark["class_key"],
+            "setting_key": iris_benchmark["setting_key"],
+            "parameters": iris_benchmark["parameters"],
+            "held_fixed_parameter": iris_benchmark["held_fixed_parameter"],
+        }
+        observation["provenance"] = provenance
     if circular == "rest_length_m":
         template["model"]["constraints"][0]["rest_length_m"] = float(args.known_distance_m)
     physical_up = {
@@ -259,7 +325,47 @@ def main() -> int:
             list(error.blockers),
             profile=select_real_fit_profile(calibration),
         )
+    if iris_benchmark is not None:
+        motion_prov = dict(motion.get("provenance") or {})
+        motion_prov["evidence_kind"] = iris_benchmark["evidence_kind"]
+        motion_prov["dataset"] = iris_benchmark["dataset"]
+        motion["provenance"] = motion_prov
     _write_json(output / "target_motion_observation.json", motion)
+    if iris_benchmark is not None:
+        from vision.reconstruction.cache import sha256_file
+        from vision.reconstruction.contracts import canonical_json_bytes
+        import hashlib
+
+        _write_json(
+            output / "iris_p5r_evidence.json",
+            {
+                "evidence_kind": iris_benchmark["evidence_kind"],
+                "dataset": iris_benchmark["dataset"],
+                "repo_id": iris_benchmark["repo_id"],
+                "source_url": iris_benchmark["source_url"],
+                "relative_video": iris_benchmark["relative_video"],
+                "video_path": str(video),
+                "video_sha256": sha256_file(video),
+                "iris_parameters": iris_benchmark["parameters"],
+                "metric_value_m": iris_benchmark["rope_length_m"],
+                "metric_name": "rope_length",
+                "held_fixed_parameter": iris_benchmark["held_fixed_parameter"],
+                "from_physical_point": iris_benchmark["from_physical_point"],
+                "to_physical_point": iris_benchmark["to_physical_point"],
+                "physical_up": {
+                    "mode": iris_benchmark["up_mode"],
+                    "source": iris_benchmark["up_source"],
+                },
+                "scene_observation_sha256": hashlib.sha256(
+                    canonical_json_bytes(observation)
+                ).hexdigest(),
+                "physical_motion_observation_sha256": hashlib.sha256(
+                    canonical_json_bytes(motion)
+                ).hexdigest(),
+                "accepted_lifts": lifted["accepted_lifts"],
+                "rejected_lifts": lifted["rejected_lifts"],
+            },
+        )
     print(
         json.dumps(
             {
@@ -288,6 +394,18 @@ def _load_or_reconstruct(
     max_frames: int,
     force: bool,
 ) -> tuple[dict[str, Any], Path]:
+    from vision.reconstruction.adapter import (
+        ReconstructionRequest,
+        VideoInput,
+        reconstruction_cache_key,
+    )
+    from vision.reconstruction.cache import (
+        cache_entry,
+        is_complete,
+        load_cached_observation,
+        publish_observation,
+        sha256_file,
+    )
     from vision.reconstruction.da3 import (
         Da3ReconstructionAdapter,
         make_descriptor,

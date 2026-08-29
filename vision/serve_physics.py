@@ -153,17 +153,22 @@ def register_physics_routes(
     @app.post("/api/physics-real-fit")
     def run_physics_real_fit() -> dict:
         footage = inspect_local_footage(root)
-        return {
-            "status": footage["status"],
-            "footage": footage,
-            "requested_clip": REQUESTED_CLIP,
-            "fit": None,
-            "blockers": [
-                "No eligible recorded clip with a tape-measured length is available. "
+        saved = _saved_real_fit(root)
+        status = saved["fit"]["status"] if saved and saved.get("fit") else footage["status"]
+        if footage["status"] == "AWAITING_FOOTAGE" and not saved:
+            status = "AWAITING_FOOTAGE"
+        blockers = []
+        if footage["status"] == "AWAITING_FOOTAGE" and not saved:
+            blockers = [
+                "No eligible clip with a measured length is available. "
                 "P5R will not invent metric scale or run Newton on ineligible footage."
             ]
-            if footage["status"] == "AWAITING_FOOTAGE"
-            else [],
+        return {
+            "status": status,
+            "footage": footage,
+            "requested_clip": REQUESTED_CLIP,
+            **(saved or {"fit": None}),
+            "blockers": blockers,
         }
 
 

@@ -15,9 +15,13 @@ recorded video
   → fitted PhysicalScene + SimulatedWorldState
 ```
 
-P5R is implemented. A completed real Newton fit still needs a short tethered
-clip with a tape-measured length. No local clip currently qualifies. The
-pipeline will not invent meters.
+P5R is implemented. The first completed real Newton fit used IRIS
+`Pendulum/pendulum_45/01.mp4`. Local recorded clips still have no
+tape-measured length. The pipeline will not invent meters.
+
+IRIS `rope_length` `0.50 m` set metric scale and held `rest_length_m` fixed.
+That run is real-video physics fitting, not independent rope-length recovery.
+See [evaluation/iris-p5r-pendulum-45-01.md](evaluation/iris-p5r-pendulum-45-01.md).
 
 ## What is new
 
@@ -77,11 +81,15 @@ read that as "physics fit passed". Synthetic fits still use
 
 ## Local footage
 
-`vision/prepare_real_motion.py --inspect` classifies on-disk clips. Current
-result: `AWAITING_FOOTAGE`.
+`vision/prepare_real_motion.py --inspect` classifies on-disk clips.
 
-The recorded pendulum exists, but there is no tape-measured length in meters.
-Image-space radius is not a metric measurement.
+Local recorded clips still fail the metric gate. The Mixkit bounce, generated
+clips, and cinematic swing are not tether validation. The local pendulum has
+no tape-measured length in meters. Image-space radius is not a metric
+measurement. Without IRIS those clips alone stay `AWAITING_FOOTAGE`.
+
+IRIS `pendulum_45/01` is eligible when `datasets/IRIS/` is present. Then
+inspect is `READY`. That is an `external_dataset` source, not `recorded_real`.
 
 ## Commands
 
@@ -138,12 +146,49 @@ when footage is missing.
 - 3 to 8 seconds
 - ball or weight on a string or rope
 - visible anchor and object
-- noticeable out-of-plane motion
+- nontrivial spatial motion. Planar pendulums are allowed
 - known tether length in meters
 - limited blur and occlusion
 
 Do not guess an object diameter. Do not treat cinematic footage as the
 correctness baseline.
+
+## IRIS first real source
+
+The first real P5R clip is IRIS `Pendulum/pendulum_45/01.mp4` from
+`rasulkhanbayov/IRIS`. Evidence kind is `external_dataset`, not
+`recorded_real`.
+
+Download stays under `datasets/IRIS/` and is gitignored.
+
+```powershell
+.\.venv\Scripts\python.exe vision\prepare_real_motion.py --iris --output results\physics3d\p5r-real-fit
+.\.venv-physics\Scripts\python.exe -m physics3d.fit_physical_scene `
+  results\physics3d\p5r-real-fit\aligned_physical_scene_template.json `
+  --motion-observation results\physics3d\p5r-real-fit\target_motion_observation.json `
+  --output results\physics3d\p5r-real-fit
+```
+
+`parameters.json` `pendulum.pendulum_45.rope_length` is `0.50 m`. That value
+sets metric scale and holds `rest_length_m` fixed. PhysTwin does not claim an
+independent rope-length recovery.
+
+The first run on this machine is recorded in
+[evaluation/iris-p5r-pendulum-45-01.md](evaluation/iris-p5r-pendulum-45-01.md).
+Status `COMPLETE` and `execution_valid` mean Newton ran. Final RMSE is
+`0.616 m`. Quality stays `unassessed`. The overlay does not follow the
+observed path. Do not treat that residual as a pass.
+
+Seed pixels for that clip are in
+`contracts/3d/v1/examples/p5r_iris_pendulum_45_01.json`. Prepare starts at
+`t=2.0 s` so the hand is no longer on the ball.
+
+Physical up for this run is `level_camera` / `assumed`.
+
+Observation-aligned rollouts keep the P4 fixture 1e-5 / 3-axis checks
+off. They still record the real XPBD tether residual and AABB travel.
+A planar swing is allowed. A P4 standalone fixture still has to meet
+the original 1e-5 and 3-axis invariants.
 
 ## P3 note
 

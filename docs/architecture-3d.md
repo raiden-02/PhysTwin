@@ -632,10 +632,13 @@ topology search, VLM hypotheses, or counterfactual controls.
 
 ## P5R status
 
-P5R is implemented and awaiting a measured real clip.
+P5R is implemented. The first completed real Newton fit used IRIS
+`Pendulum/pendulum_45/01.mp4` as an `external_dataset` source. Local recorded
+clips still have no tape-measured length, so inspect without IRIS stays
+`AWAITING_FOOTAGE`. With the IRIS clip on disk, inspect is `READY`.
 
 ```text
-recorded video
+recorded video or IRIS clip
   → DA3 + SAM2
   → entities.v1 world XYZ
   → known-distance metric_measured scale
@@ -644,11 +647,14 @@ recorded video
   → observed vs simulated Three.js view
 ```
 
-See [`physics-fitting-p5r.md`](physics-fitting-p5r.md). Do not start
-articulated control or hypothesis generation from this checkpoint.
+IRIS `rope_length` `0.50 m` set scale and held `rest_length_m` fixed. The run
+is not independent rope-length recovery. Execution was valid. Quality is
+`unassessed`. RMSE `0.616 m` on a `0.320 m` extent is a poor residual. See
+[`evaluation/iris-p5r-pendulum-45-01.md`](evaluation/iris-p5r-pendulum-45-01.md)
+and [`physics-fitting-p5r.md`](physics-fitting-p5r.md).
 
-P5R does not invent metric scale. Local footage inspection currently returns
-`AWAITING_FOOTAGE`.
+Do not start articulated control, hypothesis generation, or P7
+counterfactuals from this checkpoint.
 
 ## P0 exclusions
 

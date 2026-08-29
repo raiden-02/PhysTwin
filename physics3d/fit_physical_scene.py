@@ -14,9 +14,12 @@ sys.path.insert(0, str(ROOT))
 from physics3d.inverse_fit import (  # noqa: E402
     DEFAULT_SEED,
     FIXED_LENGTH_PROFILE,
+    FREE_FALL_PROFILE,
     PROFILE,
+    apply_free_fall_parameters,
     apply_tether_parameters,
     blocked_fit_report,
+    fit_free_fall_scene,
     fit_tether_scene,
     select_real_fit_profile,
 )
@@ -38,6 +41,10 @@ TRUTH_PARAMETERS = {
     "rest_length_m": 2.08,
     "initial_tangent_velocity_u_m_s": 0.31,
     "initial_tangent_velocity_v_m_s": -0.23,
+}
+FREE_FALL_TRUTH_PARAMETERS = {
+    "gravity_magnitude_m_s2": 9.80665,
+    "initial_velocity_y_m_s": 0.0,
 }
 
 
@@ -64,7 +71,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--entity-id")
     parser.add_argument(
         "--profile",
-        choices=(PROFILE, FIXED_LENGTH_PROFILE),
+        choices=(PROFILE, FIXED_LENGTH_PROFILE, FREE_FALL_PROFILE),
         default=None,
         help="omit to choose from calibration: fixed length when tether length set scale",
     )
@@ -88,12 +95,17 @@ def main() -> int:
     output.mkdir(parents=True, exist_ok=True)
 
     if args.fixture:
-        truth_scene = apply_tether_parameters(template, TRUTH_PARAMETERS)
+        if args.profile == FREE_FALL_PROFILE:
+            truth_scene = apply_free_fall_parameters(template, FREE_FALL_TRUTH_PARAMETERS)
+            truth_params = FREE_FALL_TRUTH_PARAMETERS
+        else:
+            truth_scene = apply_tether_parameters(template, TRUTH_PARAMETERS)
+            truth_params = TRUTH_PARAMETERS
         truth_rollout = simulate_physical_scene(truth_scene, repeat_check=False)
         motion = motion_observation_from_rollout(
             truth_rollout,
             stride=2,
-            truth_parameters=TRUTH_PARAMETERS,
+            truth_parameters=truth_params,
         )
         _write_json(output / "truth_physical_scene.json", truth_scene)
         _write_json(output / "target_motion_observation.json", motion)
@@ -167,7 +179,8 @@ def main() -> int:
     if profile is None:
         profile = PROFILE
 
-    result = fit_tether_scene(
+    fit_fn = fit_free_fall_scene if profile == FREE_FALL_PROFILE else fit_tether_scene
+    result = fit_fn(
         template,
         motion,
         output_dir=output,

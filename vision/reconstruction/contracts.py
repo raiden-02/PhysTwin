@@ -424,13 +424,17 @@ def validate_physical_scene(document: Any) -> Mapping[str, Any]:
             raise ContractError("P4 gravity must point down the -Y axis")
         solver = _mapping(execution.get("solver"), "PhysicalScene.execution.solver")
         if solver.get("type") != "xpbd":
-            raise ContractError("P4 distance constraints require the Newton XPBD solver")
+            raise ContractError("executable Newton scenes require the XPBD solver")
         if _integer(solver.get("iterations"), "solver.iterations") <= 0:
             raise ContractError("solver.iterations: must be > 0")
         if solver.get("deterministic_mode") != "run_to_run":
             raise ContractError("P4 solver deterministic_mode must be run_to_run")
-        if len(components["bodies"]) != 1 or len(components["constraints"]) != 1:
-            raise ContractError("P4 executable scene requires one body and one constraint")
+        n_constraints = len(components["constraints"])
+        if len(components["bodies"]) != 1 or n_constraints not in {0, 1}:
+            raise ContractError(
+                "executable scene requires one body and either one distance constraint "
+                "or zero constraints"
+            )
         unsupported = component_fields - {"bodies", "constraints"}
         if parameters or any(components[field] for field in unsupported):
             raise ContractError("P4 executable scene contains unsupported components")
@@ -451,35 +455,36 @@ def validate_physical_scene(document: Any) -> Mapping[str, Any]:
         _vector3(body.get("linear_velocity_m_s"), f"model.bodies.{body_id}.linear_velocity_m_s")
         _vector3(body.get("angular_velocity_rad_s"), f"model.bodies.{body_id}.angular_velocity_rad_s")
 
-        constraint_id, constraint = next(iter(components["constraints"].items()))
-        if constraint.get("type") != "distance":
-            raise ContractError(f"model.constraints.{constraint_id}.type: must be distance")
-        if constraint.get("body_id") != body_id:
-            raise ContractError(f"model.constraints.{constraint_id}.body_id: unknown body")
-        world_anchor = _vector3(
-            constraint.get("world_anchor_m"),
-            f"model.constraints.{constraint_id}.world_anchor_m",
-        )
-        body_attachment = _vector3(
-            constraint.get("body_attachment_m"),
-            f"model.constraints.{constraint_id}.body_attachment_m",
-        )
-        rest_length = _finite(
-            constraint.get("rest_length_m"),
-            f"model.constraints.{constraint_id}.rest_length_m",
-        )
-        if rest_length <= 0.0:
-            raise ContractError("constraint rest_length_m: must be > 0")
-        attachment_world = tuple(
-            sum(initial_transform[axis * 4 + offset] * body_attachment[offset] for offset in range(3))
-            + initial_transform[axis * 4 + 3]
-            for axis in range(3)
-        )
-        initial_distance = math.sqrt(
-            sum((attachment_world[axis] - world_anchor[axis]) ** 2 for axis in range(3))
-        )
-        if not math.isclose(initial_distance, rest_length, abs_tol=1e-6):
-            raise ContractError("distance constraint attachment must start at rest_length_m")
+        if n_constraints == 1:
+            constraint_id, constraint = next(iter(components["constraints"].items()))
+            if constraint.get("type") != "distance":
+                raise ContractError(f"model.constraints.{constraint_id}.type: must be distance")
+            if constraint.get("body_id") != body_id:
+                raise ContractError(f"model.constraints.{constraint_id}.body_id: unknown body")
+            world_anchor = _vector3(
+                constraint.get("world_anchor_m"),
+                f"model.constraints.{constraint_id}.world_anchor_m",
+            )
+            body_attachment = _vector3(
+                constraint.get("body_attachment_m"),
+                f"model.constraints.{constraint_id}.body_attachment_m",
+            )
+            rest_length = _finite(
+                constraint.get("rest_length_m"),
+                f"model.constraints.{constraint_id}.rest_length_m",
+            )
+            if rest_length <= 0.0:
+                raise ContractError("constraint rest_length_m: must be > 0")
+            attachment_world = tuple(
+                sum(initial_transform[axis * 4 + offset] * body_attachment[offset] for offset in range(3))
+                + initial_transform[axis * 4 + 3]
+                for axis in range(3)
+            )
+            initial_distance = math.sqrt(
+                sum((attachment_world[axis] - world_anchor[axis]) ** 2 for axis in range(3))
+            )
+            if not math.isclose(initial_distance, rest_length, abs_tol=1e-6):
+                raise ContractError("distance constraint attachment must start at rest_length_m")
     _mapping(root["provenance"], "PhysicalScene.provenance")
     _mapping(root["extensions"], "PhysicalScene.extensions")
     canonical_json_bytes(root)
@@ -600,8 +605,8 @@ def validate_simulated_world_state(document: Any) -> Mapping[str, Any]:
     constraints = _items_by_id(
         root["constraints"], "SimulatedWorldState.constraints"
     )
-    if len(constraints) != 1:
-        raise ContractError("P4 SimulatedWorldState requires one constraint")
+    if len(constraints) not in {0, 1}:
+        raise ContractError("SimulatedWorldState allows zero or one constraint")
     computed_tether_errors: list[float] = []
     for constraint_id, constraint in constraints.items():
         if constraint.get("type") != "distance":
@@ -653,20 +658,26 @@ def validate_simulated_world_state(document: Any) -> Mapping[str, Any]:
         for actual, expected in zip(backend_gravity, contract_gravity)
     ):
         raise ContractError("backend gravity does not match rollout gravity")
-    tether_error = _mapping(validation.get("tether_error_m"), "validation.tether_error_m")
-    maximum = _finite(tether_error.get("maximum"), "tether_error_m.maximum")
-    rms = _finite(tether_error.get("rms"), "tether_error_m.rms")
-    computed_maximum = max(computed_tether_errors)
-    computed_rms = math.sqrt(
-        sum(error * error for error in computed_tether_errors) / len(computed_tether_errors)
-    )
-    if (
-        not math.isclose(maximum, computed_maximum, abs_tol=1e-9)
-        or not math.isclose(rms, computed_rms, abs_tol=1e-9)
-    ):
-        raise ContractError("recorded tether error does not match body transforms")
+    tether_error = validation.get("tether_error_m")
+    if computed_tether_errors:
+        tether_error = _mapping(tether_error, "validation.tether_error_m")
+        maximum = _finite(tether_error.get("maximum"), "tether_error_m.maximum")
+        rms = _finite(tether_error.get("rms"), "tether_error_m.rms")
+        computed_maximum = max(computed_tether_errors)
+        computed_rms = math.sqrt(
+            sum(error * error for error in computed_tether_errors) / len(computed_tether_errors)
+        )
+        if (
+            not math.isclose(maximum, computed_maximum, abs_tol=1e-9)
+            or not math.isclose(rms, computed_rms, abs_tol=1e-9)
+        ):
+            raise ContractError("recorded tether error does not match body transforms")
+    else:
+        if tether_error is not None:
+            raise ContractError("unconstrained rollout must not record tether_error_m")
+        maximum = 0.0
     invariant_profile = validation.get("invariant_profile", "p4_fixture")
-    if invariant_profile not in {"p4_fixture", "observation_aligned"}:
+    if invariant_profile not in {"p4_fixture", "observation_aligned", "free_fall"}:
         raise ContractError("validation.invariant_profile: unsupported")
     if invariant_profile == "p4_fixture" and maximum > 1e-5:
         raise ContractError("recorded tether error does not match body transforms")
@@ -694,6 +705,9 @@ def validate_simulated_world_state(document: Any) -> Mapping[str, Any]:
     if invariant_profile == "p4_fixture":
         if recorded_varying != 3 or any(value < 0.05 for value in computed_ranges):
             raise ContractError("P4 rollout must vary by at least 0.05 m on X, Y, and Z")
+    elif invariant_profile == "free_fall":
+        if computed_ranges[1] < 0.05:
+            raise ContractError("free-fall rollout must travel at least 0.05 m along Y")
     elif spatial_extent < 0.02:
         raise ContractError(
             "observation-aligned rollout needs at least 0.02 m of spatial travel. "
@@ -747,6 +761,7 @@ def validate_physical_motion_observation(document: Any) -> Mapping[str, Any]:
         "synthetic_rollout",
         "scene_observation_human_root",
         "scene_observation_entity_root",
+        "metric_sphere_track",
     }:
         raise ContractError("PhysicalMotionObservation.source.kind: unsupported")
     if not isinstance(source.get("id"), str) or not source["id"]:
@@ -840,6 +855,7 @@ def validate_inverse_physics_fit(document: Any) -> Mapping[str, Any]:
     if root["profile"] not in {
         "tether_length_initial_tangent_velocity_v1",
         "tether_initial_tangent_velocity_fixed_length_v1",
+        "free_fall_gravity_v1",
     }:
         raise ContractError("InversePhysicsFit.profile: unsupported")
 
@@ -910,10 +926,16 @@ def validate_inverse_physics_fit(document: Any) -> Mapping[str, Any]:
         raise ContractError("blocked or failed fit objective metrics must be null")
 
     parameters = _items_by_id(root["parameters"], "InversePhysicsFit.parameters")
-    expected_parameter_ids = {
-        "rest_length_m", "initial_tangent_velocity_u_m_s",
-        "initial_tangent_velocity_v_m_s",
-    }
+    if root["profile"] == "free_fall_gravity_v1":
+        expected_parameter_ids = {
+            "gravity_magnitude_m_s2",
+            "initial_velocity_y_m_s",
+        }
+    else:
+        expected_parameter_ids = {
+            "rest_length_m", "initial_tangent_velocity_u_m_s",
+            "initial_tangent_velocity_v_m_s",
+        }
     if set(parameters) != expected_parameter_ids:
         raise ContractError("InversePhysicsFit.parameters: unsupported parameter set")
     for parameter_id, parameter in parameters.items():
@@ -939,6 +961,8 @@ def validate_inverse_physics_fit(document: Any) -> Mapping[str, Any]:
             and parameter["held_fixed"]
         ):
             raise ContractError("length-fitting profile cannot hold a parameter fixed")
+        if root["profile"] == "free_fall_gravity_v1" and parameter["held_fixed"]:
+            raise ContractError("free-fall profile cannot hold a parameter fixed")
         lower = _finite(parameter.get("lower_bound"), f"parameters.{parameter_id}.lower_bound")
         upper = _finite(parameter.get("upper_bound"), f"parameters.{parameter_id}.upper_bound")
         initial = _finite(parameter.get("initial"), f"parameters.{parameter_id}.initial")

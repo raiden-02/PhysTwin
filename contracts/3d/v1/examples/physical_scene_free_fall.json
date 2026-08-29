@@ -1,0 +1,105 @@
+{
+  "schema": "phystwin.physical_scene",
+  "version": 1,
+  "scene_id": "p5r-newton-free-fall",
+  "coordinates": {
+    "handedness": "right",
+    "up_axis": "+Y",
+    "transform_notation": "T_parent_child",
+    "vector_convention": "column",
+    "matrix_storage": "row_major"
+  },
+  "units": {
+    "length": "meter",
+    "mass": "kilogram",
+    "time": "second",
+    "angle": "radian"
+  },
+  "observation_alignment": {
+    "observation_uri": null,
+    "observation_sha256": null,
+    "meters_per_observation_unit": null,
+    "scale_source": "not_applicable",
+    "T_scene_observation_m": null
+  },
+  "execution": {
+    "status": "executable",
+    "blockers": [],
+    "backend": "newton",
+    "device": "cuda:0",
+    "start_time_s": 0.0,
+    "duration_s": 0.5,
+    "fixed_step_s": 0.016666666666666666,
+    "solver": {
+      "type": "xpbd",
+      "iterations": 16,
+      "deterministic_mode": "run_to_run"
+    }
+  },
+  "world": {
+    "gravity_m_s2": [
+      0.0,
+      -6.0,
+      0.0
+    ]
+  },
+  "model": {
+    "bodies": [
+      {
+        "id": "ball",
+        "type": "rigid_body",
+        "shape": {
+          "type": "sphere",
+          "radius_m": 0.11
+        },
+        "T_world_body_initial": [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          1.5,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "mass_kg": 1.0,
+        "linear_velocity_m_s": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "angular_velocity_rad_s": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "articulations": [],
+    "joints": [],
+    "constraints": [],
+    "contacts": [],
+    "materials": [],
+    "forces": [],
+    "actuators": [],
+    "residual_forces": []
+  },
+  "parameters": [],
+  "provenance": {
+    "created_utc": "2026-08-29T00:00:00Z",
+    "producer": {
+      "name": "phystwin",
+      "version": "0.0.0-p5r"
+    },
+    "purpose": "unconstrained free-fall Newton/Warp fixture. Template gravity is 6 m/s2, not Earth gravity."
+  },
+  "extensions": {}
+}

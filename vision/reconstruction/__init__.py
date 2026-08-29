@@ -15,12 +15,14 @@ from .contracts import (
     validate_scene_observation,
 )
 from .da3 import ADAPTER_VERSION, MODEL_ID, MODEL_REVISION, PACKAGE_REVISION, Da3ReconstructionAdapter
+from .humans import HUMANS_EXTENSION, validate_humans_v1
 
 __all__ = [
     "ADAPTER_VERSION",
     "ContractError",
     "Da3ReconstructionAdapter",
     "EstimatorDescriptor",
+    "HUMANS_EXTENSION",
     "MODEL_ID",
     "MODEL_REVISION",
     "PACKAGE_REVISION",
@@ -30,6 +32,7 @@ __all__ = [
     "VideoInput",
     "load_contract",
     "reconstruction_cache_key",
+    "validate_humans_v1",
     "validate_physical_scene",
     "validate_scene_observation",
 ]

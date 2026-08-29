@@ -22,4 +22,7 @@ Tracked mode holds 68 of 90 frames. All 68 valid-target frames are paired.
 `vision/make_bounce_clip.py` writes the generated diagonal and drop clips used
 by `scripts/run-eval.ps1`. Those mp4 files stay local.
 
+`vision/reconstruct_humans.py --walk-fixture --write-video` writes a projected
+SMPL24 stick-figure clip used to inspect P2. It is synthetic, not a TRAM run.
+
 `example_tracking.json` is the Python-to-C++ contract fixture.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import shutil
 import threading
@@ -16,8 +17,24 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from reconstruction.adapter import ReconstructionRequest, VideoInput, reconstruction_cache_key
-from reconstruction.cache import cache_entry, is_complete, load_cached_observation, publish_observation, sha256_file
+from reconstruction.cache import (
+    cache_entry,
+    humans_cache_entry,
+    is_complete,
+    load_cached_observation,
+    publish_observation,
+    sha256_file,
+)
 from reconstruction.da3 import Da3ReconstructionAdapter, make_descriptor, normalize_options, resolve_weights_sha256
+from reconstruction.humans import HumanReconstructionRequest, human_cache_key
+from reconstruction.tram import (
+    TRAM_UNAVAILABLE,
+    TramHumanAdapter,
+    TramUnavailableError,
+    make_descriptor as make_human_descriptor,
+    normalize_human_options,
+    write_projected_skeleton_video,
+)
 from reconstruction.video import read_video_meta
 
 _obs_lock = threading.Lock()
@@ -28,6 +45,10 @@ class ObservationRunBody(BaseModel):
     start_s: float = 0.0
     duration_s: float = 2.0
     max_frames: int = 12
+
+
+class HumansRunBody(BaseModel):
+    tram_dir: str | None = None
 
 
 def _snapshot(job: dict[str, Any]) -> dict[str, Any]:
@@ -283,3 +304,93 @@ def register_observation_routes(
         if not path.is_file():
             raise HTTPException(404, "artifact file is missing")
         return FileResponse(path, media_type=artifact.get("media_type") or "application/octet-stream")
+
+    @app.post("/api/human-fixtures")
+    def create_human_fixture() -> dict[str, Any]:
+        options = normalize_human_options({"source": "walk_fixture", "walk_frames": 12})
+        request = HumanReconstructionRequest(options=options)
+        key = human_cache_key(make_human_descriptor(), request)
+        entry = humans_cache_entry(root, key)
+        adapter = TramHumanAdapter()
+
+        def build(work_dir: Path) -> dict[str, Any]:
+            observation = adapter.reconstruct_humans(request, work_dir).observation
+            video_path = work_dir / "input.mp4"
+            write_projected_skeleton_video(video_path, observation, fps=24.0)
+            document = dict(observation)
+            source = dict(document["sources"][0])
+            source["sha256"] = sha256_file(video_path)
+            source["uri"] = "input.mp4"
+            document["sources"] = [source]
+            return document
+
+        try:
+            observation = (
+                load_cached_observation(entry)
+                if is_complete(entry) and (entry / "input.mp4").is_file()
+                else publish_observation(entry, build)
+            )
+        except Exception as exc:
+            raise HTTPException(400, str(exc)) from exc
+        video = entry / "input.mp4"
+        if not video.is_file():
+            write_projected_skeleton_video(video, observation, fps=24.0)
+        job = _prepare(video, "human_fixture.mp4", "synthetic")
+        job["entry"] = entry
+        job["cache_key"] = key
+        job["status"] = "complete"
+        job["stage"] = "complete"
+        (job["dir"] / "scene_observation.json").write_text(
+            json.dumps(observation, indent=2),
+            encoding="utf-8",
+        )
+        return _snapshot(job)
+
+    @app.post("/api/observations/{job_id}/humans")
+    def attach_observation_humans(job_id: str, body: HumansRunBody | None = None) -> dict[str, Any]:
+        job = _job_or_404(job_id)
+        if job["status"] != "complete" or job.get("entry") is None:
+            raise HTTPException(400, "reconstruct the scene before attaching humans")
+        request_body = body or HumansRunBody()
+        tram_dir = request_body.tram_dir or os.environ.get("PHYSTWIN_TRAM_DIR")
+        if not tram_dir:
+            raise HTTPException(400, TRAM_UNAVAILABLE)
+        parent = load_cached_observation(job["entry"])
+        options = normalize_human_options({"source": "tram_dir", "tram_dir": tram_dir})
+        request = HumanReconstructionRequest(
+            options=options,
+            parent_observation=parent,
+            video_sha256=sha256_file(job["video_path"]),
+        )
+        key = human_cache_key(make_human_descriptor(), request)
+        entry = humans_cache_entry(root, key)
+        adapter = TramHumanAdapter()
+
+        def build(work_dir: Path) -> dict[str, Any]:
+            artifacts = Path(job["entry"]) / "artifacts"
+            if artifacts.is_dir():
+                shutil.copytree(artifacts, work_dir / "artifacts", dirs_exist_ok=True)
+            return adapter.reconstruct_humans(request, work_dir).observation
+
+        try:
+            if not run_lock.acquire(blocking=False):
+                raise RuntimeError("another reconstruction is already running. The GPU handles one clip at a time.")
+            try:
+                observation = (
+                    load_cached_observation(entry)
+                    if is_complete(entry)
+                    else publish_observation(entry, build)
+                )
+            finally:
+                run_lock.release()
+        except TramUnavailableError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(400, str(exc)) from exc
+        job["entry"] = entry
+        job["cache_key"] = key
+        (job["dir"] / "scene_observation.json").write_text(
+            json.dumps(observation, indent=2),
+            encoding="utf-8",
+        )
+        return _snapshot(job)

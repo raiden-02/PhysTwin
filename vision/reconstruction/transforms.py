@@ -77,14 +77,28 @@ def observation_from_native(native_c2w0: Sequence[float]) -> Matrix16:
     return multiply_4x4(FIRST_CAMERA_WORLD_FROM_OPENCV, invert_rigid(native_c2w0))
 
 
-def canonical_poses_from_da3_w2c(
-    w2c_list: Sequence[Sequence[Sequence[float]] | Sequence[float]],
-) -> tuple[Matrix16, list[Matrix16]]:
-    """Return (T_obs_from_native, T_world_camera for each sample)."""
+def c2w_from_rotation_translation(
+    rotation: Sequence[Sequence[float]],
+    translation: Sequence[float],
+) -> Matrix16:
+    """Build a row-major 4x4 camera-to-world pose from OpenCV R and t."""
 
-    if w2c_list is None or len(w2c_list) == 0:
-        raise ContractError("DA3 returned no camera extrinsics")
-    native_c2w = [da3_w2c_to_c2w(item) for item in w2c_list]
+    if len(rotation) != 3 or any(len(row) != 3 for row in rotation):
+        raise ContractError("camera rotation must be 3x3")
+    if len(translation) != 3:
+        raise ContractError("camera translation must have 3 values")
+    values = (
+        float(rotation[0][0]), float(rotation[0][1]), float(rotation[0][2]), float(translation[0]),
+        float(rotation[1][0]), float(rotation[1][1]), float(rotation[1][2]), float(translation[1]),
+        float(rotation[2][0]), float(rotation[2][1]), float(rotation[2][2]), float(translation[2]),
+        0.0, 0.0, 0.0, 1.0,
+    )
+    return validate_rigid_transform(values, "T_native_camera")
+
+
+def _gauge_native_c2w(native_c2w: Sequence[Matrix16]) -> tuple[Matrix16, list[Matrix16]]:
+    if not native_c2w:
+        raise ContractError("estimator returned no camera extrinsics")
     t_obs_from_native = observation_from_native(native_c2w[0])
     poses = [multiply_4x4(t_obs_from_native, pose) for pose in native_c2w]
     first = poses[0]
@@ -92,6 +106,36 @@ def canonical_poses_from_da3_w2c(
         if not math.isclose(actual, expected, abs_tol=1e-5):
             raise ContractError("gauged first camera pose is not the observation world")
     return t_obs_from_native, poses
+
+
+def canonical_poses_from_da3_w2c(
+    w2c_list: Sequence[Sequence[Sequence[float]] | Sequence[float]],
+) -> tuple[Matrix16, list[Matrix16]]:
+    """Return (T_obs_from_native, T_world_camera for each sample)."""
+
+    if w2c_list is None or len(w2c_list) == 0:
+        raise ContractError("DA3 returned no camera extrinsics")
+    return _gauge_native_c2w([da3_w2c_to_c2w(item) for item in w2c_list])
+
+
+def canonical_poses_from_tram_c2w(
+    rotations: Sequence[Sequence[Sequence[float]]],
+    translations: Sequence[Sequence[float]],
+) -> tuple[Matrix16, list[Matrix16]]:
+    """Gauge TRAM OpenCV camera-to-world poses into the observation world.
+
+    TRAM stores `pred_cam_R` and `pred_cam_T` as camera-to-world:
+
+    `P_native = R @ P_camera + T`
+    """
+
+    if len(rotations) != len(translations) or len(rotations) == 0:
+        raise ContractError("TRAM camera R and t must be non-empty and aligned")
+    native_c2w = [
+        c2w_from_rotation_translation(rotation, translation)
+        for rotation, translation in zip(rotations, translations)
+    ]
+    return _gauge_native_c2w(native_c2w)
 
 
 def scale_intrinsics(

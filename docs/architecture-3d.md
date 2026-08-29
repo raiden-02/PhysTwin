@@ -358,7 +358,7 @@ Replacement is additive until a later checkpoint has equivalent evidence.
 ### Uncertain until measured
 
 - DA3 output quality, memory use, camera convention, and license fit.
-- GVHMR versus TRAM for world-space humans.
+- TRAM live-inference quality on real clips (P2 only locks conversion and UI).
 - GLB mesh versus point cloud as the first inspection artifact.
 - OpenUSD as interchange after simulator integration.
 - Newton versus MuJoCo Warp for later articulated cases.
@@ -454,8 +454,83 @@ point cloud and would move the first-camera origin.
 - Cache: `results/cache/reconstruction/<sha256>/` with a sibling temp directory
   and a `COMPLETE` marker written last.
 
-P1 does not add physical inference, Newton/Warp, human reconstruction, metric
-scale claims, inverse physics, or cinematic tuning.
+P1 does not add physical inference, Newton/Warp, metric scale claims, inverse
+physics, or cinematic tuning. Human reconstruction is P2.
+
+## P2 status
+
+P2 adds one human path on this branch:
+
+```text
+TRAM-native camera + camera-space SMPL24 joints
+  -> vision/reconstruction/tram.py
+  -> extensions.phystwin.humans.v1
+  -> same first-camera graphics world as P1
+  -> Three.js stick figure synced to the source video
+```
+
+The V1 `/api/jobs` loop and the P1 DA3 path stay unchanged.
+
+### License and output comparison
+
+| Estimator | Code license | Output used here | Why accepted or rejected |
+| --- | --- | --- | --- |
+| TRAM (`yufu-wang/tram`) | MIT | OpenCV `pred_cam_R` / `pred_cam_T` as camera-to-world, VIMO joints in camera space | Chosen. Commercial-friendly code license. Same OpenCV camera basis as P1. |
+| GVHMR (`zju3dv/GVHMR`) | Non-commercial research only | Gravity-view then world via camera rotation | Rejected. Needs written permission for commercial use. |
+| PromptHMR | Non-commercial research only | Wraps TRAM | Rejected as the P2 estimator. Do not install it for this path. |
+
+Pinned TRAM code revision: `4861c112f3c148201326680a50c9199650da6088`.
+Adapter: `vision/reconstruction/tram.py`, version `1.0.0`.
+
+SMPL / SMPLify body weights are third-party and are not downloaded by PhysTwin.
+Live TRAM also needs DROID-SLAM, Detectron2, and VIMO in a separate Linux/conda
+environment. This venv only converts TRAM-native files or the committed fixture.
+
+### Estimator convention and conversion
+
+TRAM camera.npy stores OpenCV camera-to-world poses:
+
+```text
+P_native = pred_cam_R @ P_camera + pred_cam_T
+```
+
+The adapter uses `pred_cam_*`, not later `world_cam_*` gravity/floor alignment.
+
+The gauge is the same as P1:
+
+1. build `T_native_camera` from each `R`, `t`;
+2. `T_obs_from_native = F * inverse(T_native_camera0)` where `F = diag(1, -1, -1, 1)`;
+3. `T_world_camera_i = T_obs_from_native * T_native_camera_i`;
+4. `p_obs = T_world_camera * p_camera`.
+
+`contracts/3d/v1/examples/tram_c2w_fixture.json` locks that conversion.
+
+If a P1 `SceneObservation` is supplied, cameras stay as they are. Camera-space
+joints are lifted through that observation's `T_world_camera`. The world basis
+matches P1. DA3 relative scale and TRAM metric camera-space units can still
+disagree. That mismatch is recorded on provenance. It is not silently "fixed."
+
+Standalone TRAM cameras are labelled `metric_assumed` with
+`meters_per_world_unit = 1`. That is ZoeDepth / fixture assumption, not a
+measured calibration.
+
+### humans.v1
+
+Body evidence lives under `extensions.phystwin.humans.v1`. Core observation
+fields do not change meaning.
+
+- `joint_layout`: `smpl24`
+- `coordinate_frame`: `observation_world`
+- each person sample stores `root` (pelvis), 24 joints, and `sample_index`
+
+CLI: `vision/reconstruct_humans.py --from-fixture` or `--tram-dir <seq>`.
+Cache: `results/cache/humans/<sha256>/`.
+UI: **Inspect P2 human fixture** draws a projected skeleton video next to the
+3D body. **Attach TRAM humans** imports an official results folder onto a P1
+observation.
+
+P2 does not add Newton/Warp, `PhysicalScene` execution, inverse physics, or
+EMDB evaluation.
 
 ## P0 exclusions
 

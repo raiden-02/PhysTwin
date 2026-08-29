@@ -43,6 +43,36 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--from-id", default="target")
     parser.add_argument("--to-id", default="anchor")
     parser.add_argument(
+        "--from-physical-point",
+        choices=("body_center", "attachment", "anchor"),
+        default="body_center",
+        help="physical point named by --from-id. Not an arbitrary SAM-mask centroid.",
+    )
+    parser.add_argument(
+        "--to-physical-point",
+        choices=("body_center", "attachment", "anchor"),
+        default="anchor",
+        help="physical point named by --to-id",
+    )
+    parser.add_argument(
+        "--up-mode",
+        choices=("level_camera", "supplied_vector"),
+        default="level_camera",
+        help="level_camera is assumed, not measured gravity",
+    )
+    parser.add_argument(
+        "--up-source",
+        choices=("assumed", "measured"),
+        default="assumed",
+    )
+    parser.add_argument(
+        "--physical-up",
+        nargs=3,
+        type=float,
+        metavar=("X", "Y", "Z"),
+        help="physical-up vector in observation coordinates. Implies supplied_vector.",
+    )
+    parser.add_argument(
         "--circular-with",
         choices=("rest_length_m", "none"),
         default="rest_length_m",
@@ -178,16 +208,25 @@ def main() -> int:
         measured_length_m=args.known_distance_m,
         measurement_source=args.measurement_source,
         circular_with_fit_parameter=circular,
+        from_physical_point=args.from_physical_point,
+        to_physical_point=args.to_physical_point,
         provenance={"video": video.name},
     )
     observation = apply_measured_scale(observation, calibration)
     if circular == "rest_length_m":
         template["model"]["constraints"][0]["rest_length_m"] = float(args.known_distance_m)
+    physical_up = {
+        "mode": "supplied_vector" if args.physical_up is not None else args.up_mode,
+        "source": args.up_source,
+    }
+    if args.physical_up is not None:
+        physical_up["vector_observation"] = list(args.physical_up)
     template = stamp_observation_alignment(
         template,
         observation,
         entity_id=args.from_id,
         anchor_id=args.to_id,
+        physical_up=physical_up,
     )
     _write_json(output / "metric_calibration.json", calibration)
     _write_json(output / "scene_observation_metric.json", observation)
@@ -400,6 +439,12 @@ def _write_blocked(
         "validation": {
             "passed": False,
             "rollout_valid": False,
+            "execution_valid": False,
+            "quality": {
+                "status": "unassessed",
+                "rmse_m": None,
+                "normalized_rmse": None,
+            },
             "synthetic_recovery": {
                 "performed": False,
                 "within_tolerance": None,

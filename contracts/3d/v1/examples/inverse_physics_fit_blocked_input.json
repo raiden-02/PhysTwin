@@ -76,6 +76,12 @@
   "validation": {
     "passed": false,
     "rollout_valid": false,
+    "execution_valid": false,
+    "quality": {
+      "status": "unassessed",
+      "rmse_m": null,
+      "normalized_rmse": null
+    },
     "synthetic_recovery": {
       "performed": false,
       "within_tolerance": null,

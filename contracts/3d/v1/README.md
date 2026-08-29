@@ -104,8 +104,15 @@ from a synthetic rollout, an eligible `humans.v1` pelvis track, or a P5R
 `entities.v1` object root.
 
 The human adapter still requires `metric_measured` scale and measured
-alignment. The entity adapter accepts assumed first-camera gravity alignment
-plus a known-distance scale. Guessed or estimator scales stay `BLOCKED_INPUT`.
+alignment. The entity adapter requires known-distance scale plus an explicit
+physical-up declaration (`level_camera` assumed, or a supplied vector).
+First-camera `+Y` is not treated as measured gravity. Guessed or estimator
+scales stay `BLOCKED_INPUT`.
+
+`InversePhysicsFit.validation` stores `execution_valid` and `quality`.
+`quality.status` is `unassessed` on real fits and `synthetic_checked` on
+synthetic recovery. Real `validation.passed` means the Newton run executed.
+It does not grade residual quality.
 
 `InversePhysicsFit` records the same three parameters. The length-fitting
 profile is `tether_length_initial_tangent_velocity_v1`. When tether length

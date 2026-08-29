@@ -149,6 +149,7 @@ class P5ContractAndSearchTest(unittest.TestCase):
             validate_inverse_physics_fit(failed_recovery)
 
         unperformed = copy.deepcopy(fit)
+        unperformed["validation"]["quality"]["status"] = "unassessed"
         unperformed["validation"]["synthetic_recovery"]["performed"] = False
         with self.assertRaisesRegex(ContractError, "must be null"):
             validate_inverse_physics_fit(unperformed)
@@ -357,6 +358,12 @@ def _minimal_complete_fit_report() -> dict:
     report["validation"] = {
         "passed": True,
         "rollout_valid": True,
+        "execution_valid": True,
+        "quality": {
+            "status": "synthetic_checked",
+            "rmse_m": 0.0,
+            "normalized_rmse": 0.0,
+        },
         "synthetic_recovery": {
             "performed": True,
             "within_tolerance": True,

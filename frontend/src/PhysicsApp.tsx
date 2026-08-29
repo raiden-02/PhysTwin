@@ -270,10 +270,13 @@ export function PhysicsApp() {
         <strong>
           {realFit
             ? realFit.fit?.status === "COMPLETE"
-              ? "P5R real fit complete"
+              ? `Newton execution ${
+                  realFit.fit.validation.execution_valid ? "valid" : "invalid"
+                } · quality ${realFit.fit.validation.quality.status}`
               : "P5R is blocked or awaiting footage"
             : fitReport
-              ? fitReport.validation.passed
+              ? fitReport.validation.quality.status === "synthetic_checked" &&
+                fitReport.validation.passed
                 ? "P5 synthetic recovery passes"
                 : "P5 fit validation failed"
               : rollout.validation.passed
@@ -281,9 +284,11 @@ export function PhysicsApp() {
                 : "P4 validation failed"}
         </strong>
         <span>
-          {fitReport
-            ? "The target is PhysicalMotionObservation. The orange path is the fitted SimulatedWorldState."
-            : "The line endpoint, body transform, and trajectory come from SimulatedWorldState."}
+          {realFit
+            ? "RMSE is reported. It is not a physics-quality pass. validation.passed means the Newton run executed, not that the residual is good."
+            : fitReport
+              ? "The target is PhysicalMotionObservation. The orange path is the fitted SimulatedWorldState."
+              : "The line endpoint, body transform, and trajectory come from SimulatedWorldState."}
         </span>
       </div>
       {fitReport ? (

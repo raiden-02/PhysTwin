@@ -251,6 +251,20 @@ def entity_observation_blockers(
         blockers.append("PhysicalScene scale_source must be measured")
     if alignment.get("alignment_source") not in {"measured", "assumed"}:
         blockers.append("PhysicalScene alignment_source must be measured or assumed")
+    if alignment.get("up_mode") not in {"level_camera", "supplied_vector"}:
+        blockers.append(
+            "PhysicalScene must declare up_mode level_camera or supplied_vector. "
+            "First-camera +Y is not measured gravity."
+        )
+    if alignment.get("up_source") not in {"assumed", "measured"}:
+        blockers.append("PhysicalScene must declare up_source assumed or measured")
+    if alignment.get("up_mode") == "level_camera" and alignment.get("up_source") == "measured":
+        blockers.append("level_camera cannot be claimed as measured gravity")
+    if (
+        alignment.get("alignment_source") == "measured"
+        and alignment.get("up_source") != "measured"
+    ):
+        blockers.append("measured alignment_source requires a measured physical-up vector")
     if alignment.get("T_scene_observation_m") is None:
         blockers.append("PhysicalScene has no T_scene_observation_m")
     if isinstance(meters, (int, float)) and not isinstance(meters, bool):

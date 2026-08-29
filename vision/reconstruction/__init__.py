@@ -11,6 +11,7 @@ from .adapter import (
 from .contracts import (
     ContractError,
     load_contract,
+    require_motion_matches_scene_alignment,
     validate_inverse_fit_artifacts,
     validate_inverse_physics_fit,
     validate_physical_motion_observation,
@@ -54,6 +55,7 @@ __all__ = [
     "VideoInput",
     "load_contract",
     "reconstruction_cache_key",
+    "require_motion_matches_scene_alignment",
     "validate_humans_v1",
     "validate_inverse_fit_artifacts",
     "validate_inverse_physics_fit",

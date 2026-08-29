@@ -182,8 +182,12 @@ This is different from an optimizer failure.
 
 `phystwin.inverse_physics_fit`, version 1, has three statuses:
 
-- `COMPLETE`: output scene and rollout exist, hashes are present, and validation
-  passed
+- `COMPLETE`: output scene and rollout exist, hashes are present, and the
+  Newton run executed (`execution_valid`). For synthetic fits,
+  `quality.status` is `synthetic_checked` and `validation.passed` is the
+  recovery check. For real fits, `quality.status` is `unassessed`. RMSE is
+  reported. `validation.passed` equals execution validity and is not a
+  residual-quality pass.
 - `BLOCKED_INPUT`: evidence gates failed, fitted values and objective metrics
   are null, and no output scene or rollout is claimed
 - `FAILED`: an attempted fit failed and the report contains failures

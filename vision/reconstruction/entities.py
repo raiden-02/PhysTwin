@@ -45,8 +45,10 @@ def validate_entities_v1(
         if entity_id in seen_ids:
             raise ContractError(f"{ENTITIES_EXTENSION}: duplicate entity id {entity_id}")
         seen_ids.add(entity_id)
-        if entity.get("kind") not in {"object", "anchor"}:
-            raise ContractError(f"entities[{entity_id}].kind: must be object or anchor")
+        if entity.get("kind") not in {"object", "anchor", "attachment"}:
+            raise ContractError(
+                f"entities[{entity_id}].kind: must be object, anchor, or attachment"
+            )
         samples = _sequence(entity.get("samples"), f"entities[{entity_id}].samples")
         if not samples:
             raise ContractError(f"entities[{entity_id}].samples: must not be empty")

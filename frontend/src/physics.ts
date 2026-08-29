@@ -150,6 +150,12 @@ export type InversePhysicsFit = {
   validation: {
     passed: boolean;
     rollout_valid: boolean;
+    execution_valid: boolean;
+    quality: {
+      status: "unassessed" | "synthetic_checked";
+      rmse_m: number | null;
+      normalized_rmse: number | null;
+    };
     synthetic_recovery: {
       performed: boolean;
       within_tolerance: boolean | null;

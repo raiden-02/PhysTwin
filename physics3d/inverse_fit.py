@@ -30,6 +30,7 @@ from vision.reconstruction.calibration import (
 )
 from vision.reconstruction.contracts import (
     canonical_json_bytes,
+    require_motion_matches_scene_alignment,
     validate_inverse_fit_artifacts,
     validate_inverse_physics_fit,
     validate_physical_motion_observation,
@@ -268,6 +269,12 @@ def blocked_fit_report(
         "validation": {
             "passed": False,
             "rollout_valid": False,
+            "execution_valid": False,
+            "quality": {
+                "status": "unassessed",
+                "rmse_m": None,
+                "normalized_rmse": None,
+            },
             "synthetic_recovery": {
                 "performed": False,
                 "within_tolerance": None,
@@ -299,6 +306,7 @@ def fit_tether_scene(
 
     template = dict(validate_physical_scene(template_scene))
     motion = dict(validate_physical_motion_observation(motion_observation))
+    require_motion_matches_scene_alignment(template, motion)
     calibration = motion.get("provenance", {}).get("calibration")
     refuse_circular_length_fit(
         calibration if isinstance(calibration, Mapping) else None,
@@ -402,7 +410,13 @@ def fit_tether_scene(
         "Mass is fixed because gravity-only ideal tether motion does not identify it.",
         "Damping is not fitted because the P4 runtime has no validated damping parameter.",
     ]
+    execution_valid = True
     if is_synthetic_source:
+        quality = {
+            "status": "synthetic_checked",
+            "rmse_m": metrics["rmse_m"],
+            "normalized_rmse": metrics["normalized_rmse"],
+        }
         validation_passed = (
             metrics["normalized_rmse"] <= SYNTHETIC_NORMALIZED_RMSE_LIMIT
             and (truth is None or recovery_ok)
@@ -414,13 +428,15 @@ def fit_tether_scene(
                 f"max_normalized_parameter_error={max_parameter_error}"
             )
     else:
-        validation_passed = True
-        if metrics["normalized_rmse"] > SYNTHETIC_NORMALIZED_RMSE_LIMIT:
-            warnings.append(
-                "normalized RMSE "
-                f"{metrics['normalized_rmse']:.6g} exceeds the synthetic "
-                f"{SYNTHETIC_NORMALIZED_RMSE_LIMIT} check. Reported honestly, not a hard fail."
-            )
+        quality = {
+            "status": "unassessed",
+            "rmse_m": metrics["rmse_m"],
+            "normalized_rmse": metrics["normalized_rmse"],
+        }
+        validation_passed = execution_valid
+        warnings.append(
+            "Real-fit quality is unassessed. RMSE is reported and is not a pass/fail."
+        )
         if any(spec.held_fixed for spec in specs):
             warnings.append(
                 "held_fixed parameters were not independently recovered by the optimizer."
@@ -509,8 +525,10 @@ def fit_tether_scene(
             "peak_gpu_memory_bytes": peak_gpu_memory,
         },
         "validation": {
-            "passed": True,
+            "passed": validation_passed,
             "rollout_valid": True,
+            "execution_valid": execution_valid,
+            "quality": quality,
             "synthetic_recovery": {
                 "performed": truth is not None,
                 "within_tolerance": recovery_ok if truth is not None else None,

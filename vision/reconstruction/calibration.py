@@ -21,6 +21,16 @@ LENGTH_FIT_PROFILE = "tether_length_initial_tangent_velocity_v1"
 FIXED_LENGTH_PROFILE = "tether_initial_tangent_velocity_fixed_length_v1"
 ALLOWED_METHODS = {"known_scene_distance"}
 ALLOWED_STATISTICS = {"median_distance"}
+ALLOWED_PHYSICAL_POINTS = {"anchor", "body_center", "attachment"}
+TETHER_ENDPOINT_SETS = {
+    frozenset({"anchor", "body_center"}),
+    frozenset({"anchor", "attachment"}),
+}
+KIND_FOR_POINT = {
+    "anchor": "anchor",
+    "body_center": "object",
+    "attachment": "attachment",
+}
 REJECTED_SOURCES = {
     "estimator",
     "guessed",
@@ -69,7 +79,18 @@ def validate_metric_calibration(document: Any) -> Mapping[str, Any]:
     if not math.isclose(scale, expected, rel_tol=0.0, abs_tol=1e-12):
         raise ContractError("meters_per_world_unit must equal measured_length_m / observed length")
     pair = _mapping(root["pair"], "MetricCalibration.pair")
-    _require_fields(pair, "MetricCalibration.pair", {"from_id", "to_id", "statistic"}, exact=True)
+    _require_fields(
+        pair,
+        "MetricCalibration.pair",
+        {
+            "from_id",
+            "to_id",
+            "statistic",
+            "from_physical_point",
+            "to_physical_point",
+        },
+        exact=True,
+    )
     if pair["statistic"] not in ALLOWED_STATISTICS:
         raise ContractError("calibration statistic is unsupported")
     if not isinstance(pair.get("from_id"), str) or not pair["from_id"]:
@@ -78,6 +99,25 @@ def validate_metric_calibration(document: Any) -> Mapping[str, Any]:
         raise ContractError("calibration pair.to_id: must be a string")
     if pair["from_id"] == pair["to_id"]:
         raise ContractError("calibration pair must connect two different entities")
+    from_point = pair.get("from_physical_point")
+    to_point = pair.get("to_physical_point")
+    if from_point not in ALLOWED_PHYSICAL_POINTS or to_point not in ALLOWED_PHYSICAL_POINTS:
+        raise ContractError(
+            "calibration endpoints are ambiguous. Declare from_physical_point and "
+            "to_physical_point as anchor, body_center, or attachment"
+        )
+    if from_point == to_point:
+        raise ContractError("calibration endpoints must name two different physical points")
+    endpoint_set = frozenset({from_point, to_point})
+    if root["circular_with_fit_parameter"] == "rest_length_m" and endpoint_set not in TETHER_ENDPOINT_SETS:
+        raise ContractError(
+            "tether-length calibration must connect anchor to body_center or attachment"
+        )
+    if endpoint_set not in TETHER_ENDPOINT_SETS:
+        raise ContractError(
+            "unsupported calibration endpoints. First P5R case is anchor to "
+            "body_center or an explicit attachment point"
+        )
     source = root["measurement_source"]
     if not isinstance(source, str) or not source.strip():
         raise ContractError("measurement_source must name the external measurement")
@@ -129,6 +169,32 @@ def median_entity_distance(
     return 0.5 * (ordered[mid - 1] + ordered[mid])
 
 
+def require_endpoint_kinds(
+    entities: Mapping[str, Any],
+    from_id: str,
+    to_id: str,
+    from_physical_point: str,
+    to_physical_point: str,
+) -> None:
+    """Refuse SAM-mask roots that are not declared as the measured physical points."""
+
+    payload = validate_entities_v1(entities)
+    left = find_entity(payload, from_id)
+    right = find_entity(payload, to_id)
+    expected_from = KIND_FOR_POINT[from_physical_point]
+    expected_to = KIND_FOR_POINT[to_physical_point]
+    if left.get("kind") != expected_from:
+        raise ContractError(
+            f"entity {from_id!r} kind {left.get('kind')!r} does not match "
+            f"physical point {from_physical_point}"
+        )
+    if right.get("kind") != expected_to:
+        raise ContractError(
+            f"entity {to_id!r} kind {right.get('kind')!r} does not match "
+            f"physical point {to_physical_point}"
+        )
+
+
 def build_known_distance_calibration(
     *,
     calibration_id: str,
@@ -138,13 +204,33 @@ def build_known_distance_calibration(
     measured_length_m: float,
     measurement_source: str,
     circular_with_fit_parameter: str | None,
+    from_physical_point: str,
+    to_physical_point: str,
     provenance: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build a measured-distance calibration from entity tracks plus a tape value."""
+    """Build a measured-distance calibration from declared endpoints plus a tape value."""
 
     if measured_length_m <= 0.0 or not math.isfinite(measured_length_m):
         raise ContractError("measured_length_m must be a finite value > 0")
+    require_endpoint_kinds(
+        entities,
+        from_id,
+        to_id,
+        from_physical_point,
+        to_physical_point,
+    )
     observed = median_entity_distance(entities, from_id, to_id)
+    extra = dict(provenance or {})
+    extra.update(
+        {
+            "observed_points": (
+                "robust_3d_center of the declared physical points. "
+                "This is not an arbitrary SAM-mask centroid claimed as a knot or string end."
+            ),
+            "from_physical_point": from_physical_point,
+            "to_physical_point": to_physical_point,
+        }
+    )
     document = {
         "schema": METRIC_CALIBRATION_SCHEMA,
         "version": 1,
@@ -157,10 +243,12 @@ def build_known_distance_calibration(
             "from_id": from_id,
             "to_id": to_id,
             "statistic": "median_distance",
+            "from_physical_point": from_physical_point,
+            "to_physical_point": to_physical_point,
         },
         "measurement_source": measurement_source,
         "circular_with_fit_parameter": circular_with_fit_parameter,
-        "provenance": dict(provenance or {}),
+        "provenance": extra,
     }
     return dict(validate_metric_calibration(document))
 
@@ -182,6 +270,13 @@ def apply_measured_scale(
         ):
             raise ContractError("observation already has a different metric_measured scale")
     if ENTITIES_EXTENSION in observation.get("extensions", {}):
+        require_endpoint_kinds(
+            observation["extensions"][ENTITIES_EXTENSION],
+            validated["pair"]["from_id"],
+            validated["pair"]["to_id"],
+            validated["pair"]["from_physical_point"],
+            validated["pair"]["to_physical_point"],
+        )
         expected = median_entity_distance(
             observation["extensions"][ENTITIES_EXTENSION],
             validated["pair"]["from_id"],
@@ -209,6 +304,9 @@ def apply_measured_scale(
         "measurement_source": validated["measurement_source"],
         "circular_with_fit_parameter": validated["circular_with_fit_parameter"],
         "measured_length_m": validated["measured_length_m"],
+        "from_physical_point": validated["pair"]["from_physical_point"],
+        "to_physical_point": validated["pair"]["to_physical_point"],
+        "observed_points": validated["provenance"].get("observed_points"),
     }
     document["provenance"] = provenance
     return document

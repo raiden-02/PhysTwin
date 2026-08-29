@@ -10,6 +10,7 @@ import {
   videoUrl,
 } from "./api";
 import { imageClick, STAGE_LABELS, STAGE_ORDER } from "./geom";
+import { ObservationApp } from "./ObservationApp";
 import { ReconstructionScene } from "./Scene";
 import { TrajectoryPlot } from "./Trajectory";
 import type {
@@ -57,6 +58,7 @@ export function App() {
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
+  const [productMode, setProductMode] = useState<"physics" | "observation">("physics");
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const frameRef = useRef<HTMLImageElement | null>(null);
 
@@ -193,18 +195,41 @@ export function App() {
     <div className="page">
       <header className="top">
         <h1>PhysTwin</h1>
-        <ol className="stepper">
-          <li className={step === 1 ? "on" : "done"}>Pick a video</li>
-          <li className={step === 2 ? "on" : step > 2 ? "done" : ""}>
-            Select target and reference
-          </li>
-          <li className={step === 3 ? "on" : ""}>Compare and read the fit</li>
-        </ol>
+        <div className="mode-choice" role="tablist" aria-label="Product mode">
+          <button
+            type="button"
+            className={productMode === "physics" ? "selected" : ""}
+            onClick={() => setProductMode("physics")}
+          >
+            2D physics twin
+          </button>
+          <button
+            type="button"
+            className={productMode === "observation" ? "selected" : ""}
+            onClick={() => setProductMode("observation")}
+          >
+            3D scene + camera
+          </button>
+        </div>
+        {productMode === "physics" ? (
+          <ol className="stepper">
+            <li className={step === 1 ? "on" : "done"}>Pick a video</li>
+            <li className={step === 2 ? "on" : step > 2 ? "done" : ""}>
+              Select target and reference
+            </li>
+            <li className={step === 3 ? "on" : ""}>Compare and read the fit</li>
+          </ol>
+        ) : (
+          <ol className="stepper">
+            <li>Video to reconstructed camera and geometry</li>
+          </ol>
+        )}
       </header>
 
-      {error ? <div className="banner bad">{error}</div> : null}
+      {productMode === "observation" ? <ObservationApp samples={samples} /> : null}
+      {productMode === "physics" && error ? <div className="banner bad">{error}</div> : null}
 
-      {job ? (
+      {productMode === "physics" && job ? (
         <div className="sourcebar">
           <span className="name">{job.source_name}</span>
           <span className="facts">
@@ -229,7 +254,7 @@ export function App() {
         </div>
       ) : null}
 
-      {!job ? (
+      {productMode === "physics" && !job ? (
         <section className="panel">
           <h2>Physics model</h2>
           <div className="model-choice" role="radiogroup" aria-label="Physics model">
@@ -289,7 +314,7 @@ export function App() {
         </section>
       ) : null}
 
-      {job && !running && !result ? (
+      {productMode === "physics" && job && !running && !result ? (
         <section className="panel clickstep">
           <div className="clickmedia">
             <div className="frame-box">
@@ -427,7 +452,7 @@ export function App() {
         </section>
       ) : null}
 
-      {running ? (
+      {productMode === "physics" && running ? (
         <section className="panel">
           <h2>Processing</h2>
           <p className="stage">{stageText(progress, job)}</p>
@@ -450,7 +475,7 @@ export function App() {
         </section>
       ) : null}
 
-      {result ? (
+      {productMode === "physics" && result ? (
         <section className="result">
           <div className="viewer">
             <div className="pane media">

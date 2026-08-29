@@ -31,6 +31,7 @@ sys.path.insert(0, str(VISION))
 os.chdir(ROOT)
 
 import track as track_mod  # noqa: E402
+from serve_observation import register_observation_routes  # noqa: E402
 
 JOBS_ROOT = ROOT / "results" / "jobs"
 DIST = ROOT / "frontend" / "dist"
@@ -320,6 +321,13 @@ app.add_middleware(
     ],
     allow_methods=["*"],
     allow_headers=["*"],
+)
+register_observation_routes(
+    app,
+    root=ROOT,
+    jobs_root=JOBS_ROOT,
+    run_lock=_run_lock,
+    sample_specs=SAMPLE_SPECS,
 )
 
 

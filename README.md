@@ -19,14 +19,25 @@ New development moves the canonical state from pixels to a reconstructed 3D
 scene, recovered camera, world-space motion, and an executable physical scene.
 Image observations remain evidence for reprojection and validation.
 
-P0 only establishes that migration boundary. No 3D reconstruction model or GPU
-physics engine is integrated yet. The complete design is in
-[docs/architecture-3d.md](docs/architecture-3d.md).
+P1 adds one reconstruction path on `feat/3d-video-to-sim-pivot`: a short real
+clip goes through pinned Apache-2.0 DA3-BASE, writes a cached
+`SceneObservation`, and shows the recovered camera plus a point cloud beside
+the recording. Scale stays relative. V1 fitting is unchanged.
+
+The complete design is in [docs/architecture-3d.md](docs/architecture-3d.md).
 
 The preserved V1 baseline is
 `b14b9a95f676e571e4b096f643663ef76cf34e03` on `main`. Projectile, pendulum,
 SAM 2 tracking, evaluations, and the current UI remain supported on the pivot
 branch.
+
+P1 reconstruction (needs the vision venv plus `scripts/setup-reconstruction.ps1`):
+
+```powershell
+.\.venv\Scripts\python.exe vision\reconstruct.py samples\bounce.mp4 --max-frames 12 --duration-s 2
+```
+
+That writes a cached `SceneObservation` under `results/cache/reconstruction/`. In the UI, switch to **3D scene + camera**. The default **2D physics twin** path is unchanged.
 
 ![Recorded Mixkit tennis: observed vs simulated overlay](docs/demo/mixkit_overlay.gif)
 

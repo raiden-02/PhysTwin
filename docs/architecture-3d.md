@@ -385,22 +385,74 @@ P0 preserves V1 behavior, including a few known contract and reporting gaps:
 These are not 3D contract semantics. Fix them in a focused V1 maintenance
 change if they become blockers. Do not silently reinterpret old evidence.
 
-## P1 scope
+## P1 status
 
-P1 implements only:
+P1 adds one reconstruction path on this branch:
 
 ```text
 short real video
-  -> one DA3 adapter
+  -> vision/reconstruction/da3.py
   -> cached SceneObservation
-  -> inspectable geometry artifact
+  -> artifacts/scene.glb point cloud
   -> recovered camera path
-  -> synchronized Three.js inspection
+  -> Three.js inspection beside the recording
 ```
 
-P1 records the exact package, license, revision, model/weights identity,
-runtime, and peak GPU memory when practical. It validates estimator coordinate
-conversion with a saved fixture or benchmark.
+The V1 `/api/jobs` loop is unchanged. The UI default remains the 2D physics
+twin. `3D scene + camera` is a separate mode that calls `/api/observations`.
+
+### Pinned DA3
+
+- Code package: `depth-anything-3` from
+  `https://github.com/ByteDance-Seed/Depth-Anything-3`
+- Code revision: `3d835ec1a5802d64a8b8b15f817a1ab54809bfe4`
+- Code license: Apache-2.0
+- Weights: `depth-anything/DA3-BASE`
+- Weights revision: `f4a6c9b3c95e41c82048423d3493a81ec3fa810e`
+- Weights license: Apache-2.0
+- Adapter: `vision/reconstruction/da3.py`, version `1.0.0`
+
+DA3-LARGE and DA3NESTED-GIANT-LARGE are CC BY-NC 4.0. P1 does not use them.
+Install extras with `scripts/setup-reconstruction.ps1`. Do not replace the V1
+venv.
+
+### Estimator convention and conversion
+
+DA3 extrinsics are OpenCV / COLMAP world-to-camera matrices, shape `(N, 3, 4)`.
+Intrinsics and depth are at the processed resolution, not the source pixels.
+
+The adapter:
+
+1. inverts each `w2c` to `T_native_camera`;
+2. gauges the first camera with `T_obs_from_native = F * inverse(T_native_camera0)`
+   where `F = diag(1, -1, -1, 1)`;
+3. writes `T_world_camera_i = T_obs_from_native * T_native_camera_i`;
+4. unprojects confident depth in OpenCV camera space, then applies the same
+   gauge to the points;
+5. scales the first-sample `K` to source pixels for the contract.
+
+The saved fixture `contracts/3d/v1/examples/da3_w2c_fixture.json` locks that
+conversion. P1 does not use DA3's GLB exporter. That exporter also centers the
+point cloud and would move the first-camera origin.
+
+### P1 decisions
+
+- Intrinsics: one camera object stores the first sample, scaled to source
+  pixels. If later samples differ, `extensions.phystwin.da3.v1.intrinsics_vary`
+  is true. The core `intrinsics` field still comes from sample 0.
+- Lens distortion: declared `unknown`. P1 does not treat source pixels as
+  undistorted.
+- Geometry artifact: colored point-cloud GLB in observation world coordinates.
+  Kind is `point_cloud`.
+- Time: container `CAP_PROP_POS_MSEC` when those values are finite and strictly
+  increasing. Otherwise `frame / fps`. The source is recorded on the samples.
+- Missing poses: a missing first pose fails the adapter. Later missing poses
+  are not filled in.
+- Scale: `relative`. `meters_per_world_unit` stays `null`.
+- Default clip window: first 2 seconds, at most 12 frames, `ref_view_strategy`
+  `middle`.
+- Cache: `results/cache/reconstruction/<sha256>/` with a sibling temp directory
+  and a `COMPLETE` marker written last.
 
 P1 does not add physical inference, Newton/Warp, human reconstruction, metric
 scale claims, inverse physics, or cinematic tuning.
@@ -417,17 +469,15 @@ P0 does not:
 - infer scale, gravity direction, mass, contacts, or forces;
 - add distributed or cloud infrastructure.
 
-## Decisions P1 must resolve
+## P1 run record
 
-Before P1 is complete, record:
+Measured on this machine with `vision/reconstruct.py samples/bounce.mp4 --max-frames 12 --duration-s 2`:
 
-- the exact DA3 package, license, immutable revision, and weight identity;
-- the estimator's native camera/world convention and tested canonical
-  conversion;
-- whether intrinsics are fixed or vary by sample;
-- whether source pixels are distorted, undistorted, or unknown;
-- the geometry artifact chosen for the first UI path;
-- how variable-frame-rate timestamps are obtained;
-- how missing camera poses and low-confidence regions are represented;
-- measured runtime and peak GPU memory on the target machine;
-- whether any real scale cue exists. The default is relative scale.
+- clip: `samples/bounce.mp4`, 281 frames at 24 fps, first 2 seconds, 12 kept frames
+- cache key: `bacb1959e742f3f3bad59c7f1b79392286233b53ca08be7ce66daf5e7e35aaec`
+- wall seconds: `4.68`
+- device: NVIDIA GeForce RTX 4080 SUPER
+- peak GPU memory bytes: `2058493440` (1963 MiB)
+- weights SHA-256: `e01067dc1659613083d9145a9a2547ccdbe6ccbbf83c4fe7b3e8a4e2bdae78b5`
+- point count: `250000` after confidence filter and downsample
+- notes: timestamps came from the container. DA3 intrinsics varied across samples, so the contract stores sample 0 and sets `intrinsics_vary` true. Scale is relative. Forward pass was 0.64 s after weights were already local.

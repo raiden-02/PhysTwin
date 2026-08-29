@@ -122,3 +122,12 @@ Do not start P7 counterfactuals from this fit. The optimizer barely moved the
 objective. One velocity parameter sat on its bound. The XPBD rod stretched by
 `0.30 m` on a `0.50 m` rest length. The overlay does not match the observed
 path.
+
+## Diagnosis
+
+A later audit of these same artifacts is in
+[iris-p5r-pendulum-45-01-diagnosis.md](iris-p5r-pendulum-45-01-diagnosis.md).
+The poor residual is not an optimizer-budget problem. Do not rerun this
+pendulum fit until the 3D lift, the pivot endpoint, and a 0.50 m XPBD rod
+are each actually valid. Prefer IRIS `falling_ball` for the first successful
+real P5R proof.

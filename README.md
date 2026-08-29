@@ -110,8 +110,15 @@ the result is `BLOCKED_INPUT`. No real human-fit values are reported. See
 
 P5R adds a generic `entities.v1` object track, SAM2+DA3 world-XYZ lift, and
 known-distance metric calibration so real inverse physics does not depend on
-`humans.v1`. Local clips do not yet include a tape-measured tether length, so
-P5R is implemented and awaiting footage. It will not invent scale.
+`humans.v1`. The first completed real fit used IRIS
+`Pendulum/pendulum_45/01.mp4`. Evidence kind is `external_dataset`. IRIS
+`rope_length` `0.50 m` set metric scale and held `rest_length_m` fixed. This
+is not independent rope-length recovery. Local recorded clips still have no
+tape-measured length. The pipeline will not invent scale.
+
+The saved IRIS run is `execution_valid` and `quality` `unassessed`. Final RMSE
+is `0.616 m` on a `0.320 m` observed extent. That residual is poor. See
+[docs/evaluation/iris-p5r-pendulum-45-01.md](docs/evaluation/iris-p5r-pendulum-45-01.md).
 
 ```powershell
 .\.venv\Scripts\python.exe vision\prepare_real_motion.py --inspect

@@ -63,6 +63,20 @@ class IrisMetadataTest(unittest.TestCase):
             self.assertFalse(review["eligible"])
             self.assertEqual(review["kind"], EVIDENCE_KIND)
 
+    def test_committed_run_record_is_not_length_recovery(self) -> None:
+        record = json.loads(
+            (ROOT / "docs" / "evaluation" / "iris-p5r-pendulum-45-01.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(record["provenance"]["evidence_kind"], EVIDENCE_KIND)
+        self.assertEqual(record["provenance"]["iris_rope_length_m"], 0.5)
+        self.assertEqual(record["provenance"]["held_fixed_parameter"], "rest_length_m")
+        self.assertFalse(record["independent_rope_length_recovery"])
+        self.assertEqual(record["quality_status"], "unassessed")
+        self.assertFalse(record["proceed_to_p7"])
+        self.assertFalse(record["overlay"]["same_qualitative_motion"])
+
     def test_on_disk_iris_parameters_match_the_clip_config(self) -> None:
         dataset = ROOT / "datasets" / "IRIS"
         params_path = dataset / "parameters.json"

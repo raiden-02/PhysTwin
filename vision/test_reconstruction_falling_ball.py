@@ -20,6 +20,8 @@ from vision.reconstruction.falling_ball import (
 )
 from vision.reconstruction.iris_falling import (
     CLIP_CONFIG_NAME,
+    assert_no_iris_gravity_truth,
+    calibration_provenance,
     evaluation_gravity_m_s2,
     load_falling_ball_clip_config,
 )
@@ -35,7 +37,8 @@ class FallingBallMetadataTest(unittest.TestCase):
         self.assertAlmostEqual(config["ball_radius_m"], 0.11)
         self.assertTrue(config["static_camera"])
         self.assertNotIn("gravity", config)
-        self.assertIn("evaluation ground truth", config["seed_notes"])
+        self.assertIn("no gravity field", config["seed_notes"])
+        assert_no_iris_gravity_truth(config)
 
     def test_committed_falling_ball_result_is_metric_gravity_recovery(self) -> None:
         record = json.loads(
@@ -50,13 +53,33 @@ class FallingBallMetadataTest(unittest.TestCase):
         self.assertEqual(record["accepted_frames"], 16)
         self.assertEqual(record["rejected_frames"], 0)
 
-    def test_evaluation_gravity_helper_is_separate_from_clip_config(self) -> None:
+    def test_evaluation_gravity_requires_an_existing_fit_artifact(self) -> None:
+        missing = ROOT / "docs" / "evaluation" / "does-not-exist-fit.json"
+        with self.assertRaises(FileNotFoundError):
+            evaluation_gravity_m_s2(ROOT, fit_artifact=missing)
+
+    def test_fit_preparation_provenance_contains_no_iris_gravity(self) -> None:
         config = load_falling_ball_clip_config(ROOT)
-        self.assertNotIn("gravity_truth_m_s2", config)
-        benchmark = {
-            "gravity_truth_m_s2": 9.81,
+        clip_input = {
+            "dataset": "IRIS",
+            "evidence_kind": "external_dataset",
+            "repo_id": "rasulkhanbayov/IRIS",
+            "source_url": "https://huggingface.co/datasets/rasulkhanbayov/IRIS",
+            "class_key": config["class_key"],
+            "setting_key": config["setting_key"],
+            "relative_video": config["relative_video"],
+            "ball_radius": {"mean": 0.11, "unit": "m"},
+            "drop_height": {"mean": 1.0, "unit": "m"},
+            "ball_radius_m": 0.11,
+            "drop_height_m": 1.0,
         }
-        self.assertAlmostEqual(evaluation_gravity_m_s2(benchmark), 9.81)
+        assert_no_iris_gravity_truth(clip_input)
+        provenance = calibration_provenance(clip_input)
+        assert_no_iris_gravity_truth(provenance)
+        leaked = dict(clip_input)
+        leaked["gravity_truth_m_s2"] = 9.81
+        with self.assertRaisesRegex(AssertionError, "gravity"):
+            assert_no_iris_gravity_truth(leaked)
 
 
 class FallingBallReconstructionTest(unittest.TestCase):
@@ -74,6 +97,10 @@ class FallingBallReconstructionTest(unittest.TestCase):
         )
         self.assertTrue(report["accepted"])
         self.assertTrue(report["assumed_static"])
+        self.assertEqual(report["units"], "da3_reconstruction")
+        self.assertEqual(report["scale"], "relative")
+        self.assertIn("max_translation_world", report)
+        self.assertNotIn("max_translation_m", report)
 
     def test_depth_jump_is_rejected(self) -> None:
         mask = np.zeros((80, 80), dtype=bool)
@@ -101,6 +128,53 @@ class FallingBallReconstructionTest(unittest.TestCase):
         )
         self.assertEqual(len(lifted["accepted"]), 1)
         self.assertIn("jumped", lifted["rejected"][0]["reason"])
+
+    def test_per_frame_intrinsics_change_reconstructed_depth(self) -> None:
+        mask = np.zeros((80, 80), dtype=bool)
+        yy, xx = np.ogrid[:80, :80]
+        mask[(xx - 40) ** 2 + (yy - 40) ** 2 <= 14 ** 2] = True
+        shared_k = {"fx_px": 220.0, "fy_px": 220.0, "cx_px": 40.0, "cy_px": 40.0}
+        wider_k = {"fx_px": 260.0, "fy_px": 260.0, "cx_px": 40.0, "cy_px": 40.0}
+        frames = [
+            {
+                "sample_index": 0,
+                "source_frame": 0,
+                "timestamp_s": 0.0,
+                "mask": mask,
+                "intrinsics": shared_k,
+            },
+            {
+                "sample_index": 1,
+                "source_frame": 1,
+                "timestamp_s": 0.03,
+                "mask": mask,
+                "intrinsics": wider_k,
+            },
+        ]
+        per_frame = lift_and_filter_frames(frames, radius_m=0.11)
+        silent_frame0 = lift_and_filter_frames(
+            [
+                {key: value for key, value in frames[0].items() if key != "intrinsics"},
+                {key: value for key, value in frames[1].items() if key != "intrinsics"},
+            ],
+            radius_m=0.11,
+            intrinsics=shared_k,
+        )
+        self.assertEqual(len(per_frame["accepted"]), 2)
+        self.assertGreater(
+            abs(per_frame["accepted"][0]["depth_m"] - per_frame["accepted"][1]["depth_m"]),
+            0.05,
+        )
+        self.assertAlmostEqual(
+            silent_frame0["accepted"][0]["depth_m"],
+            silent_frame0["accepted"][1]["depth_m"],
+            places=6,
+        )
+        self.assertNotAlmostEqual(
+            per_frame["accepted"][1]["depth_m"],
+            silent_frame0["accepted"][1]["depth_m"],
+            places=3,
+        )
 
     def test_motion_and_template_use_first_accepted_point(self) -> None:
         accepted = [

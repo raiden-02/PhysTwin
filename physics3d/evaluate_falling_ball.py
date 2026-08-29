@@ -25,19 +25,16 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    from vision.reconstruction.iris_falling import (
-        evaluation_gravity_m_s2,
-        load_iris_falling_ball_benchmark,
-    )
+    from vision.reconstruction.iris_falling import evaluation_gravity_m_s2
 
     args = parse_args()
     fit_dir = args.fit_dir.resolve()
-    fit = json.loads((fit_dir / "inverse_physics_fit.json").read_text(encoding="utf-8"))
+    fit_path = fit_dir / "inverse_physics_fit.json"
+    fit = json.loads(fit_path.read_text(encoding="utf-8"))
     evidence = json.loads(
         (fit_dir / "iris_p5r_falling_ball_evidence.json").read_text(encoding="utf-8")
     )
-    benchmark = load_iris_falling_ball_benchmark(ROOT)
-    truth = evaluation_gravity_m_s2(benchmark)
+    truth = evaluation_gravity_m_s2(ROOT, fit_artifact=fit_path)
     recovered = next(
         item["fitted"]
         for item in fit["parameters"]

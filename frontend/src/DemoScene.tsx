@@ -20,12 +20,25 @@ function addPath(scene: THREE.Scene, path: DemoPath, color: number) {
   });
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  const line = new THREE.Line(
-    geometry,
-    new THREE.LineBasicMaterial({ color }),
-  );
+  const material = new THREE.LineBasicMaterial({ color });
+  const line = new THREE.Line(geometry, material);
   scene.add(line);
-  return geometry;
+  return line;
+}
+
+function disposeObject(object: THREE.Object3D) {
+  object.traverse((child) => {
+    const mesh = child as THREE.Mesh | THREE.Line;
+    if ("geometry" in mesh && mesh.geometry) {
+      mesh.geometry.dispose();
+    }
+    if ("material" in mesh && mesh.material) {
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const material of materials) {
+        material.dispose();
+      }
+    }
+  });
 }
 
 export function DemoScene({ observed, fitted, moon, time, showMoon }: Props) {
@@ -34,6 +47,7 @@ export function DemoScene({ observed, fitted, moon, time, showMoon }: Props) {
   const observedBall = useRef<THREE.Mesh | null>(null);
   const fittedBall = useRef<THREE.Mesh | null>(null);
   const moonBall = useRef<THREE.Mesh | null>(null);
+  const moonLine = useRef<THREE.Line | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -47,7 +61,8 @@ export function DemoScene({ observed, fitted, moon, time, showMoon }: Props) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     const controls = new OrbitControls(camera, canvas);
     controls.target.set(0.0, -0.1, -1.5);
-    scene.add(new THREE.AmbientLight(0xffffff, 1.15));
+    const ambient = new THREE.AmbientLight(0xffffff, 1.15);
+    scene.add(ambient);
     const key = new THREE.DirectionalLight(0xffffff, 0.7);
     key.position.set(2, 3, 1);
     scene.add(key);
@@ -56,7 +71,7 @@ export function DemoScene({ observed, fitted, moon, time, showMoon }: Props) {
     scene.add(grid);
     addPath(scene, observed, 0x30b4dc);
     addPath(scene, fitted, 0xff6030);
-    addPath(scene, moon, 0xb9a0ff);
+    moonLine.current = addPath(scene, moon, 0xb9a0ff);
     const makeBall = (color: number) => {
       const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(0.11, 24, 18),
@@ -88,7 +103,13 @@ export function DemoScene({ observed, fitted, moon, time, showMoon }: Props) {
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
+      controls.dispose();
+      disposeObject(scene);
       renderer.dispose();
+      observedBall.current = null;
+      fittedBall.current = null;
+      moonBall.current = null;
+      moonLine.current = null;
     };
   }, [observed, fitted, moon]);
 
@@ -103,6 +124,9 @@ export function DemoScene({ observed, fitted, moon, time, showMoon }: Props) {
     if (moonBall.current) {
       moonBall.current.visible = showMoon;
       place(moonBall.current, moon);
+    }
+    if (moonLine.current) {
+      moonLine.current.visible = showMoon;
     }
   }, [time, observed, fitted, moon, showMoon]);
 

@@ -11,7 +11,7 @@ function Root() {
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
-  if (hash === "#/lab" || hash === "#/dev") {
+  if (hash === "#/diagnostics") {
     return <App />;
   }
   return <PortfolioApp />;

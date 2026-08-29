@@ -340,7 +340,7 @@ register_physics_routes(
 
 @app.get("/api/demo/falling-ball")
 def demo_falling_ball() -> dict:
-    path = ROOT / "docs" / "evaluation" / "iris-p5r-falling-ball-demo.json"
+    path = ROOT / "docs" / "evaluation" / "iris-falling-ball-demo.json"
     if not path.is_file():
         raise HTTPException(404, "falling-ball demo payload is missing")
     return json.loads(path.read_text(encoding="utf-8"))

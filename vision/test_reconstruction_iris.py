@@ -65,7 +65,7 @@ class IrisMetadataTest(unittest.TestCase):
 
     def test_committed_run_record_is_not_length_recovery(self) -> None:
         record = json.loads(
-            (ROOT / "docs" / "evaluation" / "iris-p5r-pendulum-45-01.json").read_text(
+            (ROOT / "docs" / "evaluation" / "iris-pendulum-45-01.json").read_text(
                 encoding="utf-8"
             )
         )

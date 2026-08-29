@@ -15,7 +15,6 @@ from reconstruction.contracts import (
     validate_inverse_physics_fit,
     validate_rollout_source,
 )
-from reconstruction.footage import REQUESTED_CLIP, inspect_local_footage
 
 
 def register_physics_routes(
@@ -135,61 +134,3 @@ def register_physics_routes(
             raise HTTPException(504, "P5 physics fit exceeded 360 seconds") from error
         finally:
             run_lock.release()
-
-    @app.get("/api/physics-real-fit")
-    def get_physics_real_fit() -> dict:
-        footage = inspect_local_footage(root)
-        saved = _saved_real_fit(root)
-        status = saved["fit"]["status"] if saved and saved.get("fit") else footage["status"]
-        if footage["status"] == "AWAITING_FOOTAGE" and not saved:
-            status = "AWAITING_FOOTAGE"
-        return {
-            "status": status,
-            "footage": footage,
-            "requested_clip": REQUESTED_CLIP,
-            **(saved or {}),
-        }
-
-    @app.post("/api/physics-real-fit")
-    def run_physics_real_fit() -> dict:
-        footage = inspect_local_footage(root)
-        saved = _saved_real_fit(root)
-        status = saved["fit"]["status"] if saved and saved.get("fit") else footage["status"]
-        if footage["status"] == "AWAITING_FOOTAGE" and not saved:
-            status = "AWAITING_FOOTAGE"
-        blockers = []
-        if footage["status"] == "AWAITING_FOOTAGE" and not saved:
-            blockers = [
-                "No eligible clip with a measured length is available. "
-                "The inspect path does not invent metric scale or run Newton on ineligible footage."
-            ]
-        return {
-            "status": status,
-            "footage": footage,
-            "requested_clip": REQUESTED_CLIP,
-            **(saved or {"fit": None}),
-            "blockers": blockers,
-        }
-
-
-def _saved_real_fit(root: Path) -> dict | None:
-    output = root / "results" / "physics3d" / "p5r-real-fit"
-    report_path = output / "inverse_physics_fit.json"
-    if not report_path.is_file():
-        return None
-    try:
-        report = dict(load_contract(report_path))
-    except Exception:
-        return None
-    payload: dict = {"fit": report}
-    motion_path = output / "target_motion_observation.json"
-    scene_path = output / "fitted_physical_scene.json"
-    rollout_path = output / "simulated_world_state.json"
-    if motion_path.is_file() and scene_path.is_file() and rollout_path.is_file():
-        try:
-            payload["motion_observation"] = dict(load_contract(motion_path))
-            payload["physical_scene"] = dict(load_contract(scene_path))
-            payload["rollout"] = dict(load_contract(rollout_path))
-        except Exception:
-            return {"fit": report}
-    return payload

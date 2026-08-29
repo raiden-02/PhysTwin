@@ -42,7 +42,7 @@ class FallingBallMetadataTest(unittest.TestCase):
 
     def test_committed_falling_ball_result_is_metric_gravity_recovery(self) -> None:
         record = json.loads(
-            (ROOT / "docs" / "evaluation" / "iris-p5r-falling-ball.json").read_text(
+            (ROOT / "docs" / "evaluation" / "iris-falling-ball.json").read_text(
                 encoding="utf-8"
             )
         )

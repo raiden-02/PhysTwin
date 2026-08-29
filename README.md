@@ -31,7 +31,7 @@ This run:
 The purple Moon path is the same fitted drop with gravity set to 1.62 m/s².
 It was not observed.
 
-Details: [docs/evaluation/iris-p5r-falling-ball.md](docs/evaluation/iris-p5r-falling-ball.md)
+Details: [docs/evaluation/iris-falling-ball.md](docs/evaluation/iris-falling-ball.md)
 
 ## How it works
 
@@ -73,7 +73,7 @@ failed as physics. RMSE was 0.616 m on a 0.320 m extent. Small-object DA3
 depth flattened the swing, the calibration pair was the clamp centroid rather
 than the string exit, and a 0.50 m XPBD rod is not rigid in this runtime.
 That residual is kept. See
-[docs/evaluation/iris-p5r-pendulum-45-01-diagnosis.md](docs/evaluation/iris-p5r-pendulum-45-01-diagnosis.md).
+[docs/evaluation/iris-pendulum-45-01-diagnosis.md](docs/evaluation/iris-pendulum-45-01-diagnosis.md).
 
 V1 also has recorded 2D Mixkit and pendulum numbers in
 [docs/evaluation.json](docs/evaluation.json). Those are image-space fits, not

@@ -198,10 +198,10 @@ counterfactual rollout`}</pre>
       <details className="fold">
         <summary>Limitations</summary>
         <p>
-          Metric scale uses the measured IRIS ball radius. Gravity direction is
-          assumed down the camera +Y axis. The model is one rigid sphere with
-          no drag or contact. A pendulum experiment with DA3 depth and a short
-          XPBD rod did not recover a usable trajectory.
+          Metric scale uses the measured IRIS ball radius. Camera +Y is treated
+          as physical up. Gravity acts along -Y. The model is one rigid sphere
+          with no drag or contact. A pendulum experiment with DA3 depth and a
+          short XPBD rod did not recover a usable trajectory.
         </p>
       </details>
 
@@ -215,9 +215,6 @@ counterfactual rollout`}</pre>
           <li>Moon rollout: {demo.hashes.moon_rollout_sha256}</li>
           <li>
             Moon gravity is a simulated hypothesis. It was not observed in the video.
-          </li>
-          <li>
-            <a href="#/lab">Diagnostics</a>
           </li>
         </ul>
       </details>

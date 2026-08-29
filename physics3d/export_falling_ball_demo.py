@@ -74,7 +74,7 @@ def main() -> int:
             "moon_rollout_sha256": counterfactual["counterfactual_rollout_sha256"],
         },
     }
-    out = ROOT / "docs" / "evaluation" / "iris-p5r-falling-ball-demo.json"
+    out = ROOT / "docs" / "evaluation" / "iris-falling-ball-demo.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(out)

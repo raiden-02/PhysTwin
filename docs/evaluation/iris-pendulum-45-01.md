@@ -4,7 +4,7 @@ Experiment: first real-video Newton tether fit.
 
 It is not a physics-quality pass. It is not independent rope-length recovery.
 
-Machine-readable copy: [`iris-p5r-pendulum-45-01.json`](iris-p5r-pendulum-45-01.json).
+Machine-readable copy: [`iris-pendulum-45-01.json`](iris-pendulum-45-01.json).
 
 Large local files stay in `results/physics3d/p5r-real-fit/` and
 `datasets/IRIS/`. Those directories are gitignored.
@@ -96,5 +96,5 @@ and `execution_valid` only mean the solver ran.
 ## Diagnosis
 
 A later audit of these same artifacts is in
-[iris-p5r-pendulum-45-01-diagnosis.md](iris-p5r-pendulum-45-01-diagnosis.md).
+[iris-pendulum-45-01-diagnosis.md](iris-pendulum-45-01-diagnosis.md).
 The poor residual is not an optimizer-budget problem.

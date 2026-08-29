@@ -68,6 +68,24 @@ benchmark evidence. A measured run needs user-supplied EMDB and SMPL files.
 EMDB data is restricted to approved non-commercial academic use. See
 [docs/reconstruction-evaluation-p3.md](docs/reconstruction-evaluation-p3.md).
 
+P4 adds the first executable 3D `PhysicalScene`. It runs one sphere under
+gravity with a native Newton fixed-distance joint, writes a project-owned
+`SimulatedWorldState`, and displays that saved rollout in Three.js.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-physics.ps1
+.\.venv-physics\Scripts\python.exe -m physics3d.simulate_physical_scene `
+  contracts\3d\v1\examples\physical_scene_tether.json `
+  --output results\physics3d\p4-tether `
+  --repeat-check
+```
+
+The physics environment pins Apache-2.0 Newton `1.5.1` and Warp `1.16.0`
+separately from the vision environment. In the UI, switch to **3D physics**
+and select **Inspect P4 physics fixture**. See
+[docs/physics-runtime-p4.md](docs/physics-runtime-p4.md) for the contract,
+coordinate conversion, versions, and measured invariants.
+
 ![Recorded Mixkit tennis: observed vs simulated overlay](docs/demo/mixkit_overlay.gif)
 
 This is the recorded projectile case. Mixkit [Tennis Ball Bouncing in Slow Motion](https://mixkit.co/free-stock-video/tennis-ball-bouncing-in-slow-motion-101289/), 281 frames at 24 fps.

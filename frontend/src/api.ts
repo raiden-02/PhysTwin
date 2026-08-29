@@ -11,6 +11,7 @@ import type {
   Result,
   Sample,
 } from "./types";
+import type { PhysicsFixtureResult } from "./physics";
 
 async function parseError(response: Response): Promise<string> {
   try {
@@ -176,6 +177,12 @@ export async function attachObservationHumans(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ tram_dir: tramDir ?? null }),
   });
+  if (!response.ok) throw new Error(await parseError(response));
+  return response.json();
+}
+
+export async function runPhysicsFixture(): Promise<PhysicsFixtureResult> {
+  const response = await fetch("/api/physics-fixture", { method: "POST" });
   if (!response.ok) throw new Error(await parseError(response));
   return response.json();
 }

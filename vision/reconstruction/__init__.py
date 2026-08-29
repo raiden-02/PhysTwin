@@ -12,10 +12,21 @@ from .contracts import (
     ContractError,
     load_contract,
     validate_physical_scene,
+    validate_rollout_source,
     validate_scene_observation,
+    validate_simulated_world_state,
 )
-from .da3 import ADAPTER_VERSION, MODEL_ID, MODEL_REVISION, PACKAGE_REVISION, Da3ReconstructionAdapter
 from .humans import HUMANS_EXTENSION, validate_humans_v1
+
+
+def __getattr__(name: str):
+    """Load the optional DA3 adapter only when a caller requests it."""
+
+    if name in {"ADAPTER_VERSION", "MODEL_ID", "MODEL_REVISION", "PACKAGE_REVISION", "Da3ReconstructionAdapter"}:
+        from . import da3
+
+        return getattr(da3, name)
+    raise AttributeError(name)
 
 __all__ = [
     "ADAPTER_VERSION",
@@ -34,5 +45,7 @@ __all__ = [
     "reconstruction_cache_key",
     "validate_humans_v1",
     "validate_physical_scene",
+    "validate_rollout_source",
     "validate_scene_observation",
+    "validate_simulated_world_state",
 ]

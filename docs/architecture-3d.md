@@ -565,6 +565,38 @@ number is claimed yet. P3 remains data-blocked at that benchmark step.
 P3 does not add Newton/Warp, physics fitting, `PhysicalScene` execution, or
 counterfactual controls.
 
+## P4 status
+
+P4 adds one executable physical scene without changing reconstruction:
+
+```text
+physical_scene_tether.json
+  -> .venv-physics Python subprocess
+  -> Newton 1.5.1 SolverXPBD on Warp 1.16.0 CUDA
+  -> phystwin.simulated_world_state version 1
+  -> Three.js anchor, tether, body, trajectory, and playback
+```
+
+The input is a standalone SI-unit scene. It has one 1 kg sphere, gravity,
+one world anchor, one body-local attachment, and one fixed 2 m distance.
+Newton's native `ModelBuilder.add_joint_distance` represents the tether.
+`SolverXPBD` is used because Newton 1.5.1's support table lists it as the only
+solver that enforces `DISTANCE`.
+
+The simulator adapter keeps the project world as right-handed and `+Y` up.
+It constructs Newton's `ModelBuilder` with `newton.Axis.Y` and passes gravity
+directly, so no axis swap is needed. The adapter converts row-major
+`T_world_body` matrices to XYZW quaternions at the input boundary and converts
+Newton body transforms back to row-major matrices for the rollout.
+
+P4 runs in `.venv-physics`. FastAPI stays in `.venv` and invokes physics
+through JSON files and a subprocess. See
+[`physics-runtime-p4.md`](physics-runtime-p4.md) for setup, versions,
+licenses, exact payload, validation, and measured runtime.
+
+P4 does not fit the scene to DA3 or TRAM, add articulated-human physics,
+introduce counterfactual controls, or start P5.
+
 ## P0 exclusions
 
 P0 does not:

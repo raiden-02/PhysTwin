@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 SCENE_OBSERVATION_SCHEMA = "phystwin.scene_observation"
 PHYSICAL_SCENE_SCHEMA = "phystwin.physical_scene"
+SIMULATED_WORLD_STATE_SCHEMA = "phystwin.simulated_world_state"
 CONTRACT_VERSION = 1
 
 # OpenCV camera (+X right, +Y down, +Z forward) to the first-camera
@@ -332,13 +335,31 @@ def validate_physical_scene(document: Any) -> Mapping[str, Any]:
             raise ContractError(f"PhysicalScene.units.{field}: must be {expected}")
 
     alignment = _mapping(root["observation_alignment"], "observation_alignment")
-    _sha256(alignment.get("observation_sha256"), "observation_sha256")
+    observation_uri = alignment.get("observation_uri")
+    observation_hash = alignment.get("observation_sha256")
+    has_observation = observation_uri is not None or observation_hash is not None
+    if has_observation:
+        if not isinstance(observation_uri, str) or not observation_uri:
+            raise ContractError("observation_uri: must identify the source observation")
+        _sha256(observation_hash, "observation_sha256")
+    elif any(
+        alignment.get(field) is not None
+        for field in (
+            "meters_per_observation_unit",
+            "T_scene_observation_m",
+        )
+    ):
+        raise ContractError("standalone PhysicalScene cannot declare an observation alignment")
     meters = alignment.get("meters_per_observation_unit")
     if meters is not None and _finite(meters, "meters_per_observation_unit") <= 0.0:
         raise ContractError("meters_per_observation_unit: must be > 0")
     scale_source = alignment.get("scale_source")
-    if scale_source not in {"unknown", "measured", "assumed", "fitted"}:
+    if scale_source not in {"not_applicable", "unknown", "measured", "assumed", "fitted"}:
         raise ContractError("scale_source is unsupported")
+    if has_observation and scale_source == "not_applicable":
+        raise ContractError("observation alignment requires a scale source")
+    if not has_observation and scale_source != "not_applicable":
+        raise ContractError("standalone PhysicalScene scale_source must be not_applicable")
     transform = alignment.get("T_scene_observation_m")
     if transform is not None:
         validate_rigid_transform(transform, "T_scene_observation_m")
@@ -351,34 +372,399 @@ def validate_physical_scene(document: Any) -> Mapping[str, Any]:
     fixed_step = execution.get("fixed_step_s")
     if fixed_step is not None and _finite(fixed_step, "fixed_step_s") <= 0.0:
         raise ContractError("fixed_step_s: must be > 0")
+    start_time = execution.get("start_time_s")
+    if start_time is not None:
+        start_time = _finite(start_time, "start_time_s")
+    duration = execution.get("duration_s")
+    if duration is not None and _finite(duration, "duration_s") <= 0.0:
+        raise ContractError("duration_s: must be > 0")
 
     world = _mapping(root["world"], "PhysicalScene.world")
-    _vector3(world.get("gravity_m_s2"), "PhysicalScene.world.gravity_m_s2")
+    gravity = _vector3(world.get("gravity_m_s2"), "PhysicalScene.world.gravity_m_s2")
     model = _mapping(root["model"], "PhysicalScene.model")
     component_fields = {
         "bodies", "articulations", "joints", "constraints", "contacts",
         "materials", "forces", "actuators", "residual_forces",
     }
     _require_fields(model, "PhysicalScene.model", component_fields, exact=True)
+    components: dict[str, dict[str, Mapping[str, Any]]] = {}
     for field in component_fields:
-        for component_id, component in _items_by_id(model[field], f"model.{field}").items():
+        components[field] = _items_by_id(model[field], f"model.{field}")
+        for component_id, component in components[field].items():
             if not isinstance(component.get("type"), str):
                 raise ContractError(f"model.{field}.{component_id}.type: must be a string")
-    _items_by_id(root["parameters"], "PhysicalScene.parameters")
+    parameters = _items_by_id(root["parameters"], "PhysicalScene.parameters")
 
     if status == "executable":
         if blockers:
             raise ContractError("PhysicalScene.execution.blockers: must be empty")
-        if not execution.get("backend") or fixed_step is None:
-            raise ContractError("executable scene requires a backend and fixed step")
-        if scale_source == "unknown" or meters is None:
-            raise ContractError("PhysicalScene: metric scale is required when executable")
-        if transform is None:
-            raise ContractError("PhysicalScene: alignment is required when executable")
+        if has_observation:
+            if scale_source == "unknown" or meters is None:
+                raise ContractError("PhysicalScene: metric scale is required when executable")
+            if transform is None:
+                raise ContractError("PhysicalScene: alignment is required when executable")
+        if execution.get("backend") != "newton" or fixed_step is None or duration is None:
+            raise ContractError("executable P4 scene requires Newton, duration, and fixed step")
+        if start_time is None:
+            raise ContractError("executable P4 scene requires start_time_s")
+        device = execution.get("device")
+        if not isinstance(device, str) or re.fullmatch(r"cuda:\d+", device) is None:
+            raise ContractError("executable P4 scene requires a CUDA device")
+        steps = round(duration / fixed_step)
+        if steps <= 0 or not math.isclose(steps * fixed_step, duration, abs_tol=1e-12):
+            raise ContractError("duration_s must be an integer multiple of fixed_step_s")
+        if gravity[1] >= 0.0 or not math.isclose(gravity[0], 0.0, abs_tol=1e-12) or not math.isclose(
+            gravity[2], 0.0, abs_tol=1e-12
+        ):
+            raise ContractError("P4 gravity must point down the -Y axis")
+        solver = _mapping(execution.get("solver"), "PhysicalScene.execution.solver")
+        if solver.get("type") != "xpbd":
+            raise ContractError("P4 distance constraints require the Newton XPBD solver")
+        if _integer(solver.get("iterations"), "solver.iterations") <= 0:
+            raise ContractError("solver.iterations: must be > 0")
+        if solver.get("deterministic_mode") != "run_to_run":
+            raise ContractError("P4 solver deterministic_mode must be run_to_run")
+        if len(components["bodies"]) != 1 or len(components["constraints"]) != 1:
+            raise ContractError("P4 executable scene requires one body and one constraint")
+        unsupported = component_fields - {"bodies", "constraints"}
+        if parameters or any(components[field] for field in unsupported):
+            raise ContractError("P4 executable scene contains unsupported components")
+        body_id, body = next(iter(components["bodies"].items()))
+        if body.get("type") != "rigid_body":
+            raise ContractError(f"model.bodies.{body_id}.type: must be rigid_body")
+        shape = _mapping(body.get("shape"), f"model.bodies.{body_id}.shape")
+        if shape.get("type") != "sphere":
+            raise ContractError(f"model.bodies.{body_id}.shape.type: must be sphere")
+        if _finite(shape.get("radius_m"), f"model.bodies.{body_id}.shape.radius_m") <= 0.0:
+            raise ContractError("sphere radius_m: must be > 0")
+        if _finite(body.get("mass_kg"), f"model.bodies.{body_id}.mass_kg") <= 0.0:
+            raise ContractError("body mass_kg: must be > 0")
+        initial_transform = validate_rigid_transform(
+            body.get("T_world_body_initial"),
+            f"model.bodies.{body_id}.T_world_body_initial",
+        )
+        _vector3(body.get("linear_velocity_m_s"), f"model.bodies.{body_id}.linear_velocity_m_s")
+        _vector3(body.get("angular_velocity_rad_s"), f"model.bodies.{body_id}.angular_velocity_rad_s")
+
+        constraint_id, constraint = next(iter(components["constraints"].items()))
+        if constraint.get("type") != "distance":
+            raise ContractError(f"model.constraints.{constraint_id}.type: must be distance")
+        if constraint.get("body_id") != body_id:
+            raise ContractError(f"model.constraints.{constraint_id}.body_id: unknown body")
+        world_anchor = _vector3(
+            constraint.get("world_anchor_m"),
+            f"model.constraints.{constraint_id}.world_anchor_m",
+        )
+        body_attachment = _vector3(
+            constraint.get("body_attachment_m"),
+            f"model.constraints.{constraint_id}.body_attachment_m",
+        )
+        rest_length = _finite(
+            constraint.get("rest_length_m"),
+            f"model.constraints.{constraint_id}.rest_length_m",
+        )
+        if rest_length <= 0.0:
+            raise ContractError("constraint rest_length_m: must be > 0")
+        attachment_world = tuple(
+            sum(initial_transform[axis * 4 + offset] * body_attachment[offset] for offset in range(3))
+            + initial_transform[axis * 4 + 3]
+            for axis in range(3)
+        )
+        initial_distance = math.sqrt(
+            sum((attachment_world[axis] - world_anchor[axis]) ** 2 for axis in range(3))
+        )
+        if not math.isclose(initial_distance, rest_length, abs_tol=1e-6):
+            raise ContractError("distance constraint attachment must start at rest_length_m")
     _mapping(root["provenance"], "PhysicalScene.provenance")
     _mapping(root["extensions"], "PhysicalScene.extensions")
     canonical_json_bytes(root)
     return root
+
+
+def validate_simulated_world_state(document: Any) -> Mapping[str, Any]:
+    """Validate the project-owned P4 rollout without backend-native objects."""
+
+    root = _mapping(document, "SimulatedWorldState")
+    root_fields = {
+        "schema", "version", "rollout_id", "source", "simulator",
+        "coordinates", "units", "world", "timeline", "bodies", "constraints",
+        "execution", "validation", "reproducibility", "warnings", "failures",
+    }
+    _require_fields(root, "SimulatedWorldState", root_fields, exact=True)
+    if root["schema"] != SIMULATED_WORLD_STATE_SCHEMA or root["version"] != CONTRACT_VERSION:
+        raise ContractError("SimulatedWorldState: unsupported schema or version")
+
+    source = _mapping(root["source"], "SimulatedWorldState.source")
+    if not isinstance(source.get("physical_scene_id"), str) or not source["physical_scene_id"]:
+        raise ContractError("SimulatedWorldState.source.physical_scene_id: must be a string")
+    _sha256(source.get("physical_scene_sha256"), "physical_scene_sha256")
+    if source.get("hash_encoding") != "canonical JSON, sorted keys, UTF-8, no non-finite numbers":
+        raise ContractError("SimulatedWorldState.source.hash_encoding is unsupported")
+    simulator = _mapping(root["simulator"], "SimulatedWorldState.simulator")
+    if simulator.get("backend") != "newton" or simulator.get("solver") != "xpbd":
+        raise ContractError("SimulatedWorldState.simulator: expected Newton XPBD")
+    for field in (
+        "backend_version", "backend_revision", "warp_version", "warp_revision",
+        "device", "device_name", "cuda_toolkit", "cuda_driver_api",
+    ):
+        if not isinstance(simulator.get(field), str) or not simulator[field]:
+            raise ContractError(f"SimulatedWorldState.simulator.{field}: must be a string")
+    if simulator["backend_version"] != "1.5.1" or simulator["backend_revision"] != "17c82b57c0cf369ee23baa776636fc633b82ccfa":
+        raise ContractError("SimulatedWorldState.simulator: unsupported Newton build")
+    if simulator["warp_version"] != "1.16.0" or simulator["warp_revision"] != "86ec8b78cbef8bb570a9877e351ac0f365718e30":
+        raise ContractError("SimulatedWorldState.simulator: unsupported Warp build")
+    if re.fullmatch(r"cuda:\d+", simulator["device"]) is None:
+        raise ContractError("SimulatedWorldState.simulator.device: must be CUDA")
+    if simulator.get("up_axis") != "+Y":
+        raise ContractError("SimulatedWorldState.simulator.up_axis: must be +Y")
+
+    coordinates = _mapping(root["coordinates"], "SimulatedWorldState.coordinates")
+    for field, expected in {
+        "handedness": "right",
+        "up_axis": "+Y",
+        "transform_notation": "T_parent_child",
+        "vector_convention": "column",
+        "matrix_storage": "row_major",
+    }.items():
+        if coordinates.get(field) != expected:
+            raise ContractError(f"SimulatedWorldState.coordinates.{field}: must be {expected}")
+    units = _mapping(root["units"], "SimulatedWorldState.units")
+    for field, expected in {
+        "length": "meter", "mass": "kilogram", "time": "second", "angle": "radian"
+    }.items():
+        if units.get(field) != expected:
+            raise ContractError(f"SimulatedWorldState.units.{field}: must be {expected}")
+    _vector3(_mapping(root["world"], "SimulatedWorldState.world").get("gravity_m_s2"), "gravity_m_s2")
+
+    timeline = _mapping(root["timeline"], "SimulatedWorldState.timeline")
+    samples = _sequence(timeline.get("samples"), "SimulatedWorldState.timeline.samples")
+    if not samples:
+        raise ContractError("SimulatedWorldState.timeline.samples: must not be empty")
+    fixed_step = _finite(timeline.get("fixed_step_s"), "timeline.fixed_step_s")
+    if fixed_step <= 0.0:
+        raise ContractError("timeline.fixed_step_s: must be > 0")
+    start_time = _finite(timeline.get("start_time_s"), "timeline.start_time_s")
+    duration = _finite(timeline.get("duration_s"), "timeline.duration_s")
+    if duration <= 0.0:
+        raise ContractError("timeline.duration_s: must be > 0")
+    previous_time = -math.inf
+    for index, raw in enumerate(samples):
+        sample = _mapping(raw, f"timeline.samples[{index}]")
+        if _integer(sample.get("sample_index"), "sample_index") != index:
+            raise ContractError("rollout sample_index must be contiguous from zero")
+        timestamp = _finite(sample.get("timestamp_s"), "timestamp_s")
+        expected = start_time + index * fixed_step
+        if timestamp <= previous_time or not math.isclose(timestamp, expected, abs_tol=1e-9):
+            raise ContractError("rollout timestamps must be strictly increasing at fixed_step_s")
+        previous_time = timestamp
+    expected_steps = round(duration / fixed_step)
+    if (
+        expected_steps <= 0
+        or len(samples) != expected_steps + 1
+        or not math.isclose(samples[-1]["timestamp_s"], start_time + duration, abs_tol=1e-9)
+    ):
+        raise ContractError("rollout timeline must cover duration_s at fixed_step_s")
+
+    bodies = _items_by_id(root["bodies"], "SimulatedWorldState.bodies")
+    if len(bodies) != 1:
+        raise ContractError("P4 SimulatedWorldState requires one body")
+    body_transforms: dict[str, list[tuple[float, ...]]] = {}
+    for body_id, body in bodies.items():
+        if body.get("type") != "rigid_body":
+            raise ContractError(f"bodies.{body_id}.type: must be rigid_body")
+        shape = _mapping(body.get("shape"), f"bodies.{body_id}.shape")
+        if shape.get("type") != "sphere" or _finite(shape.get("radius_m"), "radius_m") <= 0.0:
+            raise ContractError(f"bodies.{body_id}.shape: expected a positive-radius sphere")
+        if _finite(body.get("mass_kg"), f"bodies.{body_id}.mass_kg") <= 0.0:
+            raise ContractError(f"bodies.{body_id}.mass_kg: must be > 0")
+        body_samples = _sequence(body.get("samples"), f"bodies.{body_id}.samples")
+        if len(body_samples) != len(samples):
+            raise ContractError(f"bodies.{body_id}.samples: must match timeline")
+        body_transforms[body_id] = []
+        for index, raw in enumerate(body_samples):
+            sample = _mapping(raw, f"bodies.{body_id}.samples[{index}]")
+            if _integer(sample.get("sample_index"), "sample_index") != index:
+                raise ContractError("body sample_index must match timeline")
+            transform = validate_rigid_transform(
+                sample.get("T_world_body"),
+                f"bodies.{body_id}.T_world_body",
+            )
+            body_transforms[body_id].append(transform)
+            _vector3(sample.get("linear_velocity_m_s"), f"bodies.{body_id}.linear_velocity_m_s")
+            _vector3(sample.get("angular_velocity_rad_s"), f"bodies.{body_id}.angular_velocity_rad_s")
+    constraints = _items_by_id(
+        root["constraints"], "SimulatedWorldState.constraints"
+    )
+    if len(constraints) != 1:
+        raise ContractError("P4 SimulatedWorldState requires one constraint")
+    computed_tether_errors: list[float] = []
+    for constraint_id, constraint in constraints.items():
+        if constraint.get("type") != "distance":
+            raise ContractError(f"constraints.{constraint_id}.type: must be distance")
+        if constraint.get("body_id") not in bodies:
+            raise ContractError(f"constraints.{constraint_id}.body_id: unknown body")
+        anchor = _vector3(constraint.get("world_anchor_m"), f"constraints.{constraint_id}.world_anchor_m")
+        attachment = _vector3(
+            constraint.get("body_attachment_m"),
+            f"constraints.{constraint_id}.body_attachment_m",
+        )
+        rest_length = _finite(constraint.get("rest_length_m"), "rest_length_m")
+        if rest_length <= 0.0:
+            raise ContractError("constraint rest_length_m: must be > 0")
+        for transform in body_transforms[constraint["body_id"]]:
+            attachment_world = tuple(
+                sum(transform[axis * 4 + offset] * attachment[offset] for offset in range(3))
+                + transform[axis * 4 + 3]
+                for axis in range(3)
+            )
+            distance = math.sqrt(
+                sum((attachment_world[axis] - anchor[axis]) ** 2 for axis in range(3))
+            )
+            computed_tether_errors.append(abs(distance - rest_length))
+
+    execution = _mapping(root["execution"], "SimulatedWorldState.execution")
+    if execution.get("status") != "complete":
+        raise ContractError("SimulatedWorldState.execution.status: must be complete")
+    if _integer(execution.get("steps"), "execution.steps") != expected_steps:
+        raise ContractError("execution.steps must match the timeline")
+    if _integer(execution.get("output_samples"), "execution.output_samples") != len(samples):
+        raise ContractError("execution.output_samples must match the timeline")
+    if _finite(execution.get("wall_seconds"), "execution.wall_seconds") < 0.0:
+        raise ContractError("execution.wall_seconds: must be >= 0")
+    repeat_wall = execution.get("repeat_wall_seconds")
+    if repeat_wall is not None and _finite(repeat_wall, "execution.repeat_wall_seconds") < 0.0:
+        raise ContractError("execution.repeat_wall_seconds: must be >= 0")
+    if _integer(execution.get("peak_gpu_memory_bytes"), "execution.peak_gpu_memory_bytes") < 0:
+        raise ContractError("execution.peak_gpu_memory_bytes: must be >= 0")
+
+    validation = _mapping(root["validation"], "SimulatedWorldState.validation")
+    for field in ("passed", "finite_state", "time_monotonic", "gravity_matches_contract"):
+        if validation.get(field) is not True:
+            raise ContractError(f"SimulatedWorldState.validation.{field}: must be true")
+    backend_gravity = _vector3(validation.get("backend_gravity_m_s2"), "backend_gravity_m_s2")
+    contract_gravity = _vector3(root["world"]["gravity_m_s2"], "gravity_m_s2")
+    if any(
+        not math.isclose(actual, expected, abs_tol=1e-6)
+        for actual, expected in zip(backend_gravity, contract_gravity)
+    ):
+        raise ContractError("backend gravity does not match rollout gravity")
+    tether_error = _mapping(validation.get("tether_error_m"), "validation.tether_error_m")
+    maximum = _finite(tether_error.get("maximum"), "tether_error_m.maximum")
+    rms = _finite(tether_error.get("rms"), "tether_error_m.rms")
+    computed_maximum = max(computed_tether_errors)
+    computed_rms = math.sqrt(
+        sum(error * error for error in computed_tether_errors) / len(computed_tether_errors)
+    )
+    if (
+        maximum > 1e-5
+        or not math.isclose(maximum, computed_maximum, abs_tol=1e-9)
+        or not math.isclose(rms, computed_rms, abs_tol=1e-9)
+    ):
+        raise ContractError("recorded tether error does not match body transforms")
+    position_ranges = _mapping(
+        validation.get("body_position_range_m"),
+        "validation.body_position_range_m",
+    )
+    transforms = next(iter(body_transforms.values()))
+    computed_ranges = [
+        max(transform[axis * 4 + 3] for transform in transforms)
+        - min(transform[axis * 4 + 3] for transform in transforms)
+        for axis in range(3)
+    ]
+    for axis, computed in zip(("x", "y", "z"), computed_ranges):
+        if not math.isclose(_finite(position_ranges.get(axis), f"body_position_range_m.{axis}"), computed, abs_tol=1e-9):
+            raise ContractError("recorded body position range does not match body transforms")
+    if (
+        _integer(
+            position_ranges.get("varying_axis_count_at_0_05_m"),
+            "varying_axis_count_at_0_05_m",
+        )
+        != 3
+        or any(value < 0.05 for value in computed_ranges)
+    ):
+        raise ContractError("P4 rollout must vary by at least 0.05 m on X, Y, and Z")
+
+    reproducibility = _mapping(root["reproducibility"], "SimulatedWorldState.reproducibility")
+    if reproducibility.get("stochastic_components") is not False:
+        raise ContractError("P4 reproducibility.stochastic_components must be false")
+    if reproducibility.get("requested_deterministic_mode") != "Warp RUN_TO_RUN":
+        raise ContractError("P4 reproducibility deterministic mode is unsupported")
+    repeat = _mapping(reproducibility.get("repeat_run"), "reproducibility.repeat_run")
+    if repeat.get("performed"):
+        delta = _finite(repeat.get("max_abs_transform_delta"), "repeat_run.max_abs_transform_delta")
+        tolerance = _finite(repeat.get("tolerance"), "repeat_run.tolerance")
+        if repeat.get("within_tolerance") is not True or delta > tolerance:
+            raise ContractError("repeated rollout exceeded its transform tolerance")
+    _sequence(root["warnings"], "SimulatedWorldState.warnings")
+    failures = _sequence(root["failures"], "SimulatedWorldState.failures")
+    if failures:
+        raise ContractError("complete SimulatedWorldState cannot contain failures")
+    canonical_json_bytes(root)
+    return root
+
+
+def validate_rollout_source(
+    rollout: Mapping[str, Any],
+    physical_scene: Mapping[str, Any],
+) -> None:
+    """Confirm a rollout identifies the exact PhysicalScene being returned."""
+
+    validated_rollout = validate_simulated_world_state(rollout)
+    validated_scene = validate_physical_scene(physical_scene)
+    source = validated_rollout["source"]
+    expected_hash = hashlib.sha256(canonical_json_bytes(validated_scene)).hexdigest()
+    if source["physical_scene_id"] != validated_scene["scene_id"]:
+        raise ContractError("rollout physical_scene_id does not match PhysicalScene")
+    if source["physical_scene_sha256"] != expected_hash:
+        raise ContractError("rollout PhysicalScene SHA-256 does not match")
+
+    scene_execution = validated_scene["execution"]
+    timeline = validated_rollout["timeline"]
+    if (
+        validated_rollout["coordinates"] != validated_scene["coordinates"]
+        or validated_rollout["units"] != validated_scene["units"]
+        or validated_rollout["world"] != validated_scene["world"]
+        or validated_rollout["simulator"]["device"] != scene_execution["device"]
+        or validated_rollout["simulator"]["solver"] != scene_execution["solver"]["type"]
+        or not math.isclose(timeline["start_time_s"], scene_execution["start_time_s"], abs_tol=1e-12)
+        or not math.isclose(timeline["duration_s"], scene_execution["duration_s"], abs_tol=1e-12)
+        or not math.isclose(timeline["fixed_step_s"], scene_execution["fixed_step_s"], abs_tol=1e-12)
+    ):
+        raise ContractError("rollout world or execution settings do not match PhysicalScene")
+
+    scene_body = validated_scene["model"]["bodies"][0]
+    rollout_body = validated_rollout["bodies"][0]
+    initial_sample = rollout_body["samples"][0]
+    if (
+        rollout_body["id"] != scene_body["id"]
+        or rollout_body["type"] != scene_body["type"]
+        or rollout_body["shape"] != scene_body["shape"]
+        or not math.isclose(rollout_body["mass_kg"], scene_body["mass_kg"], abs_tol=1e-12)
+        or any(
+            not math.isclose(actual, expected, abs_tol=1e-6)
+            for actual, expected in zip(
+                initial_sample["T_world_body"],
+                scene_body["T_world_body_initial"],
+            )
+        )
+        or any(
+            not math.isclose(actual, expected, abs_tol=1e-6)
+            for actual, expected in zip(
+                initial_sample["linear_velocity_m_s"],
+                scene_body["linear_velocity_m_s"],
+            )
+        )
+        or any(
+            not math.isclose(actual, expected, abs_tol=1e-6)
+            for actual, expected in zip(
+                initial_sample["angular_velocity_rad_s"],
+                scene_body["angular_velocity_rad_s"],
+            )
+        )
+    ):
+        raise ContractError("rollout body metadata or initial state does not match PhysicalScene")
+    if validated_rollout["constraints"] != validated_scene["model"]["constraints"]:
+        raise ContractError("rollout constraints do not match PhysicalScene")
 
 
 def load_contract(path: Path) -> Mapping[str, Any]:
@@ -396,4 +782,6 @@ def load_contract(path: Path) -> Mapping[str, Any]:
         return validate_scene_observation(document)
     if schema == PHYSICAL_SCENE_SCHEMA:
         return validate_physical_scene(document)
+    if schema == SIMULATED_WORLD_STATE_SCHEMA:
+        return validate_simulated_world_state(document)
     raise ContractError(f"{path}: unknown schema {schema!r}")

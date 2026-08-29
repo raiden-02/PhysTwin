@@ -57,6 +57,17 @@ Official TRAM import, after you run TRAM yourself, is
 `vision\reconstruct_humans.py --tram-dir <tram>\results\<seq>`. See
 `scripts/setup-humans.ps1`.
 
+P3 can evaluate that observation against an approved EMDB sequence:
+
+```powershell
+.\.venv\Scripts\python.exe vision\evaluate_reconstruction.py --fixture
+```
+
+The fixture checks camera/body alignment and metric behavior. It is not
+benchmark evidence. A measured run needs user-supplied EMDB and SMPL files.
+EMDB data is restricted to approved non-commercial academic use. See
+[docs/reconstruction-evaluation-p3.md](docs/reconstruction-evaluation-p3.md).
+
 ![Recorded Mixkit tennis: observed vs simulated overlay](docs/demo/mixkit_overlay.gif)
 
 This is the recorded projectile case. Mixkit [Tennis Ball Bouncing in Slow Motion](https://mixkit.co/free-stock-video/tennis-ball-bouncing-in-slow-motion-101289/), 281 frames at 24 fps.

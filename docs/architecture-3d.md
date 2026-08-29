@@ -532,6 +532,39 @@ observation.
 P2 does not add Newton/Warp, `PhysicalScene` execution, inverse physics, or
 EMDB evaluation.
 
+## P3 status
+
+P3 adds a benchmark evaluator without changing reconstruction:
+
+```text
+SceneObservation + approved EMDB sequence + registered SMPL model
+  -> exact source-frame matching
+  -> EMDB OpenCV w2c to first-camera graphics world
+  -> camera, root, world-joint, and local-pose metrics
+  -> reconstruction_evaluation.json + trajectory_comparison.svg
+```
+
+The evaluator is `vision/reconstruction/evaluation.py`. The CLI is
+`vision/evaluate_reconstruction.py`. Full usage and metric definitions are in
+[`reconstruction-evaluation-p3.md`](reconstruction-evaluation-p3.md).
+
+EMDB code is MIT and pinned at
+`9a4eab677181a3789bda7ba5c36ab8cff797380c`. The dataset is restricted to
+approved non-commercial academic use and requires an institutional email.
+SMPL model files have separate registration terms.
+
+The evaluator uses the prediction's first source frame as the common camera
+gauge. It applies no extra rigid or similarity alignment to direct world
+metrics. PA-MPJPE and the camera scale fit are separate diagnostics and are
+labelled with the alignment they remove.
+
+P3 currently has only a synthetic `0.05 m` offset check. There is no approved
+EMDB sequence or registered SMPL model in this workspace, so no measured EMDB
+number is claimed yet. P3 remains data-blocked at that benchmark step.
+
+P3 does not add Newton/Warp, physics fitting, `PhysicalScene` execution, or
+counterfactual controls.
+
 ## P0 exclusions
 
 P0 does not:

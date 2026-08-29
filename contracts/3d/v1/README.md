@@ -14,6 +14,9 @@ They are not moved or changed during P0.
 - `examples/tram_c2w_fixture.json` locks the TRAM OpenCV `c2w` plus camera-space SMPL24 joints to observation-world conversion.
 - `vision/reconstruction/contracts.py` contains the executable contract validation.
 - Body evidence is namespaced as `extensions.phystwin.humans.v1`. It does not change core coordinates.
+- `phystwin.reconstruction_evaluation` records P3 metrics, alignment, coverage,
+  benchmark provenance, and artifact hashes. It stays separate from
+  `SceneObservation` and `PhysicalScene`.
 
 Large geometry, masks, depth arrays, and model-native outputs are referenced as
 artifacts. They are not embedded in these JSON envelopes.
@@ -84,5 +87,5 @@ full coordinate and migration decisions.
 Run the contract checks from the repository root:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest vision.test_reconstruction_contracts vision.test_reconstruction_p1 vision.test_reconstruction_p2 -v
+.\.venv\Scripts\python.exe -m unittest vision.test_reconstruction_contracts vision.test_reconstruction_p1 vision.test_reconstruction_p2 vision.test_reconstruction_p3 -v
 ```

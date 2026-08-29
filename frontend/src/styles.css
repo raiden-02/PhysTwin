@@ -432,6 +432,10 @@ button:hover:not(:disabled),
   overflow: hidden;
 }
 
+.physics-pane .scene-wrap {
+  height: clamp(320px, 58vh, 620px);
+}
+
 /* Pin the canvas to its wrapper so its intrinsic buffer size never feeds back
    into grid layout. Scene.tsx sizes the drawing buffer from the same box. */
 .scene-wrap canvas {

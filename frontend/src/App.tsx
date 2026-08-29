@@ -11,6 +11,7 @@ import {
 } from "./api";
 import { imageClick, STAGE_LABELS, STAGE_ORDER } from "./geom";
 import { ObservationApp } from "./ObservationApp";
+import { PhysicsApp } from "./PhysicsApp";
 import { ReconstructionScene } from "./Scene";
 import { TrajectoryPlot } from "./Trajectory";
 import type {
@@ -58,7 +59,7 @@ export function App() {
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
-  const [productMode, setProductMode] = useState<"physics" | "observation">("physics");
+  const [productMode, setProductMode] = useState<"physics" | "observation" | "physics3d">("physics");
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const frameRef = useRef<HTMLImageElement | null>(null);
 
@@ -210,6 +211,13 @@ export function App() {
           >
             3D scene + camera
           </button>
+          <button
+            type="button"
+            className={productMode === "physics3d" ? "selected" : ""}
+            onClick={() => setProductMode("physics3d")}
+          >
+            3D physics
+          </button>
         </div>
         {productMode === "physics" ? (
           <ol className="stepper">
@@ -219,14 +227,19 @@ export function App() {
             </li>
             <li className={step === 3 ? "on" : ""}>Compare and read the fit</li>
           </ol>
-        ) : (
+        ) : productMode === "observation" ? (
           <ol className="stepper">
             <li>Video to reconstructed camera, geometry, and body</li>
+          </ol>
+        ) : (
+          <ol className="stepper">
+            <li>PhysicalScene to Newton/Warp rollout</li>
           </ol>
         )}
       </header>
 
       {productMode === "observation" ? <ObservationApp samples={samples} /> : null}
+      {productMode === "physics3d" ? <PhysicsApp /> : null}
       {productMode === "physics" && error ? <div className="banner bad">{error}</div> : null}
 
       {productMode === "physics" && job ? (

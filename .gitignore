@@ -12,6 +12,7 @@ out/
 
 # Python
 .venv/
+.venv-physics/
 venv/
 __pycache__/
 *.py[cod]

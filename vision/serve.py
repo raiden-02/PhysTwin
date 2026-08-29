@@ -32,6 +32,7 @@ os.chdir(ROOT)
 
 import track as track_mod  # noqa: E402
 from serve_observation import register_observation_routes  # noqa: E402
+from serve_physics import register_physics_routes  # noqa: E402
 
 JOBS_ROOT = ROOT / "results" / "jobs"
 DIST = ROOT / "frontend" / "dist"
@@ -328,6 +329,12 @@ register_observation_routes(
     jobs_root=JOBS_ROOT,
     run_lock=_run_lock,
     sample_specs=SAMPLE_SPECS,
+)
+register_physics_routes(
+    app,
+    root=ROOT,
+    jobs_root=JOBS_ROOT,
+    run_lock=_run_lock,
 )
 
 

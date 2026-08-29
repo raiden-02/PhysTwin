@@ -11,6 +11,11 @@ They are not moved or changed during P0.
 - `examples/scene_observation.json` is reconstructed visual evidence.
 - `examples/physical_scene.json` is a draft physical interpretation.
 - `examples/physical_scene_tether.json` is the first executable P4 scene.
+- `examples/physical_scene_tether_fit_template.json` is the bounded P5 fit template.
+- `examples/physical_motion_observation_tether_synthetic.json` is a compact
+  sample of the generated metric target.
+- `examples/inverse_physics_fit_blocked_input.json` records the strict gate
+  result for the current relative-scale observation.
 - `examples/da3_w2c_fixture.json` locks the DA3 OpenCV `w2c` to observation-world conversion.
 - `examples/tram_c2w_fixture.json` locks the TRAM OpenCV `c2w` plus camera-space SMPL24 joints to observation-world conversion.
 - `vision/reconstruction/contracts.py` contains the executable contract validation.
@@ -20,6 +25,10 @@ They are not moved or changed during P0.
   `SceneObservation` and `PhysicalScene`.
 - `phystwin.simulated_world_state` records P4 simulator output. Three.js reads
   this project-owned rollout instead of Newton objects.
+- `phystwin.physical_motion_observation` stores metric 3D body-origin evidence
+  for the P5 objective.
+- `phystwin.inverse_physics_fit` stores P5 status, bounds, fitted values,
+  objective metrics, artifact hashes, and validation.
 
 Large geometry, masks, depth arrays, and model-native outputs are referenced as
 artifacts. They are not embedded in these JSON envelopes.
@@ -87,6 +96,25 @@ The P4 output schema is `phystwin.simulated_world_state`, version 1. It stores:
 - finite, time, gravity, tether-error, XYZ-motion, and repeat-run checks
 - warnings and failures
 
+## P5 fit contracts
+
+`PhysicalMotionObservation` is not a second `SceneObservation`. It is the small
+metric signal consumed by one inverse-physics objective. It can be generated
+from a synthetic rollout or adapted from an eligible `humans.v1` pelvis track.
+
+The real-evidence adapter requires `metric_measured` scale, matching source
+hashes, measured scale and alignment, enough visible motion, and meaningful
+variation on all three axes. Current P1/P2 outputs fail that gate. P5 records
+`BLOCKED_INPUT` instead of treating relative or assumed units as measurements.
+
+`InversePhysicsFit` records exactly three bounded parameters for
+`tether_length_initial_tangent_velocity_v1`. Status is `COMPLETE`,
+`BLOCKED_INPUT`, or `FAILED`. A complete report must reference the fitted
+`PhysicalScene` and final `SimulatedWorldState`.
+
+See [the P5 fitting document](../../../docs/physics-fitting-p5.md) for the
+objective, bounds, gate, optimizer, and failure behavior.
+
 ## Extension rule
 
 Future evidence that is not part of the P0 core lives under a versioned,
@@ -112,6 +140,6 @@ full coordinate and migration decisions.
 Run the contract checks from the repository root:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest vision.test_reconstruction_contracts vision.test_reconstruction_p1 vision.test_reconstruction_p2 vision.test_reconstruction_p3 physics3d.test_p4 -v
-.\.venv-physics\Scripts\python.exe -m unittest physics3d.test_p4 -v
+.\.venv\Scripts\python.exe -m unittest vision.test_reconstruction_contracts vision.test_reconstruction_p1 vision.test_reconstruction_p2 vision.test_reconstruction_p3 -v
+.\.venv-physics\Scripts\python.exe -m unittest physics3d.test_p4 physics3d.test_p5 -v
 ```

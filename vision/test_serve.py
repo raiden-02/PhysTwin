@@ -21,6 +21,11 @@ class ServeHelpersTest(unittest.TestCase):
             self.assertEqual(samples["bounce"]["kind"], "recorded")
             self.assertEqual(samples["bounce"]["suggested_point"], [375.0, 722.0])
 
+    def test_physics_routes_are_registered(self) -> None:
+        paths = {route.path for route in serve.app.routes}
+        self.assertIn("/api/physics-fixture", paths)
+        self.assertIn("/api/physics-fit-fixture", paths)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -13,6 +13,8 @@ from typing import Any
 SCENE_OBSERVATION_SCHEMA = "phystwin.scene_observation"
 PHYSICAL_SCENE_SCHEMA = "phystwin.physical_scene"
 SIMULATED_WORLD_STATE_SCHEMA = "phystwin.simulated_world_state"
+PHYSICAL_MOTION_OBSERVATION_SCHEMA = "phystwin.physical_motion_observation"
+INVERSE_PHYSICS_FIT_SCHEMA = "phystwin.inverse_physics_fit"
 CONTRACT_VERSION = 1
 
 # OpenCV camera (+X right, +Y down, +Z forward) to the first-camera
@@ -363,6 +365,9 @@ def validate_physical_scene(document: Any) -> Mapping[str, Any]:
     transform = alignment.get("T_scene_observation_m")
     if transform is not None:
         validate_rigid_transform(transform, "T_scene_observation_m")
+    alignment_source = alignment.get("alignment_source")
+    if alignment_source not in {None, "unknown", "measured", "assumed", "fitted"}:
+        raise ContractError("alignment_source is unsupported")
 
     execution = _mapping(root["execution"], "PhysicalScene.execution")
     status = execution.get("status")
@@ -703,6 +708,384 @@ def validate_simulated_world_state(document: Any) -> Mapping[str, Any]:
     return root
 
 
+def validate_physical_motion_observation(document: Any) -> Mapping[str, Any]:
+    """Validate metric 3D point evidence used by the P5 objective."""
+
+    root = _mapping(document, "PhysicalMotionObservation")
+    root_fields = {
+        "schema", "version", "observation_id", "source", "coordinates",
+        "units", "track", "provenance", "warnings",
+    }
+    _require_fields(root, "PhysicalMotionObservation", root_fields, exact=True)
+    if (
+        root["schema"] != PHYSICAL_MOTION_OBSERVATION_SCHEMA
+        or root["version"] != CONTRACT_VERSION
+    ):
+        raise ContractError("PhysicalMotionObservation: unsupported schema or version")
+    if not isinstance(root["observation_id"], str) or not root["observation_id"]:
+        raise ContractError("PhysicalMotionObservation.observation_id: must be a string")
+
+    source = _mapping(root["source"], "PhysicalMotionObservation.source")
+    _require_fields(
+        source,
+        "PhysicalMotionObservation.source",
+        {"kind", "id", "sha256"},
+        exact=True,
+    )
+    if source.get("kind") not in {"synthetic_rollout", "scene_observation_human_root"}:
+        raise ContractError("PhysicalMotionObservation.source.kind: unsupported")
+    if not isinstance(source.get("id"), str) or not source["id"]:
+        raise ContractError("PhysicalMotionObservation.source.id: must be a string")
+    _sha256(source.get("sha256"), "PhysicalMotionObservation.source.sha256")
+
+    coordinates = _mapping(root["coordinates"], "PhysicalMotionObservation.coordinates")
+    _require_fields(
+        coordinates,
+        "PhysicalMotionObservation.coordinates",
+        {"handedness", "up_axis", "transform_notation", "vector_convention"},
+        exact=True,
+    )
+    for field, expected in {
+        "handedness": "right",
+        "up_axis": "+Y",
+        "transform_notation": "T_parent_child",
+        "vector_convention": "column",
+    }.items():
+        if coordinates.get(field) != expected:
+            raise ContractError(
+                f"PhysicalMotionObservation.coordinates.{field}: must be {expected}"
+            )
+    units = _mapping(root["units"], "PhysicalMotionObservation.units")
+    _require_fields(
+        units,
+        "PhysicalMotionObservation.units",
+        {"length", "time"},
+        exact=True,
+    )
+    if units.get("length") != "meter" or units.get("time") != "second":
+        raise ContractError("PhysicalMotionObservation units must be meters and seconds")
+
+    track = _mapping(root["track"], "PhysicalMotionObservation.track")
+    _require_fields(track, "PhysicalMotionObservation.track", {"body_id", "point", "samples"}, exact=True)
+    if not isinstance(track["body_id"], str) or not track["body_id"]:
+        raise ContractError("PhysicalMotionObservation.track.body_id: must be a string")
+    if track["point"] != "body_origin":
+        raise ContractError("PhysicalMotionObservation.track.point: must be body_origin")
+    samples = _sequence(track["samples"], "PhysicalMotionObservation.track.samples")
+    if len(samples) < 2:
+        raise ContractError("PhysicalMotionObservation requires at least two samples")
+    previous_time = -math.inf
+    for index, raw in enumerate(samples):
+        sample = _mapping(raw, f"PhysicalMotionObservation.track.samples[{index}]")
+        _require_fields(
+            sample,
+            f"PhysicalMotionObservation.track.samples[{index}]",
+            {"sample_index", "timestamp_s", "position_m", "weight"},
+            exact=True,
+        )
+        if _integer(sample["sample_index"], "sample_index") != index:
+            raise ContractError("motion sample_index must be contiguous from zero")
+        timestamp = _finite(sample["timestamp_s"], "timestamp_s")
+        if timestamp < 0.0 or timestamp <= previous_time:
+            raise ContractError("motion timestamps must be non-negative and strictly increasing")
+        previous_time = timestamp
+        _vector3(sample["position_m"], "position_m")
+        weight = _finite(sample["weight"], "weight")
+        if not 0.0 < weight <= 1.0:
+            raise ContractError("motion sample weight must be in (0, 1]")
+    provenance = _mapping(root["provenance"], "PhysicalMotionObservation.provenance")
+    if not isinstance(provenance.get("synthetic"), bool):
+        raise ContractError("PhysicalMotionObservation.provenance.synthetic must be a boolean")
+    if (source["kind"] == "synthetic_rollout") != provenance["synthetic"]:
+        raise ContractError("motion source kind and synthetic provenance disagree")
+    if source["kind"] != "synthetic_rollout" and provenance.get("truth_parameters") is not None:
+        raise ContractError("real motion evidence cannot declare truth_parameters")
+    _sequence(root["warnings"], "PhysicalMotionObservation.warnings")
+    canonical_json_bytes(root)
+    return root
+
+
+def validate_inverse_physics_fit(document: Any) -> Mapping[str, Any]:
+    """Validate a completed or explicitly blocked P5 fit report."""
+
+    root = _mapping(document, "InversePhysicsFit")
+    root_fields = {
+        "schema", "version", "fit_id", "status", "source", "profile",
+        "objective", "parameters", "optimizer", "outputs", "execution",
+        "validation", "blockers", "warnings", "failures",
+    }
+    _require_fields(root, "InversePhysicsFit", root_fields, exact=True)
+    if root["schema"] != INVERSE_PHYSICS_FIT_SCHEMA or root["version"] != CONTRACT_VERSION:
+        raise ContractError("InversePhysicsFit: unsupported schema or version")
+    if not isinstance(root["fit_id"], str) or not root["fit_id"]:
+        raise ContractError("InversePhysicsFit.fit_id: must be a string")
+    status = root["status"]
+    if status not in {"COMPLETE", "BLOCKED_INPUT", "FAILED"}:
+        raise ContractError("InversePhysicsFit.status: unsupported")
+    if root["profile"] != "tether_length_initial_tangent_velocity_v1":
+        raise ContractError("InversePhysicsFit.profile: unsupported")
+
+    source = _mapping(root["source"], "InversePhysicsFit.source")
+    _require_fields(
+        source,
+        "InversePhysicsFit.source",
+        {"template_physical_scene", "motion_observation", "scene_observation"},
+        exact=True,
+    )
+    template = _mapping(source.get("template_physical_scene"), "source.template_physical_scene")
+    _require_fields(
+        template,
+        "source.template_physical_scene",
+        {"id", "sha256"},
+        exact=True,
+    )
+    if not isinstance(template.get("id"), str) or not template["id"]:
+        raise ContractError("source.template_physical_scene.id: must be a string")
+    _sha256(template.get("sha256"), "source.template_physical_scene.sha256")
+    motion = source.get("motion_observation")
+    if motion is not None:
+        motion = _mapping(motion, "source.motion_observation")
+        _require_fields(motion, "source.motion_observation", {"id", "sha256"}, exact=True)
+        if not isinstance(motion.get("id"), str) or not motion["id"]:
+            raise ContractError("source.motion_observation.id: must be a string")
+        _sha256(motion.get("sha256"), "source.motion_observation.sha256")
+    elif status == "COMPLETE":
+        raise ContractError("complete inverse fit requires a motion observation")
+    scene_observation = source.get("scene_observation")
+    if scene_observation is not None:
+        scene_observation = _mapping(scene_observation, "source.scene_observation")
+        _require_fields(
+            scene_observation,
+            "source.scene_observation",
+            {"id", "sha256"},
+            exact=True,
+        )
+        if not isinstance(scene_observation.get("id"), str) or not scene_observation["id"]:
+            raise ContractError("source.scene_observation.id: must be a string")
+        _sha256(scene_observation.get("sha256"), "source.scene_observation.sha256")
+
+    objective = _mapping(root["objective"], "InversePhysicsFit.objective")
+    _require_fields(
+        objective,
+        "InversePhysicsFit.objective",
+        {
+            "type", "sample_count", "mse_m2", "rmse_m", "trajectory_extent_m",
+            "normalized_rmse", "initial_mse_m2", "improvement_ratio",
+        },
+        exact=True,
+    )
+    if objective.get("type") != "weighted_position_mse_3d":
+        raise ContractError("InversePhysicsFit.objective.type: unsupported")
+    sample_count = _integer(objective.get("sample_count"), "objective.sample_count")
+    metrics = (
+        "mse_m2", "rmse_m", "trajectory_extent_m", "normalized_rmse",
+        "initial_mse_m2", "improvement_ratio",
+    )
+    if status == "COMPLETE":
+        if sample_count < 2:
+            raise ContractError("complete fit requires at least two objective samples")
+        for field in metrics:
+            value = _finite(objective.get(field), f"objective.{field}")
+            if value < 0.0:
+                raise ContractError(f"objective.{field}: must be >= 0")
+    elif any(objective.get(field) is not None for field in metrics):
+        raise ContractError("blocked or failed fit objective metrics must be null")
+
+    parameters = _items_by_id(root["parameters"], "InversePhysicsFit.parameters")
+    expected_parameter_ids = {
+        "rest_length_m", "initial_tangent_velocity_u_m_s",
+        "initial_tangent_velocity_v_m_s",
+    }
+    if set(parameters) != expected_parameter_ids:
+        raise ContractError("InversePhysicsFit.parameters: unsupported parameter set")
+    for parameter_id, parameter in parameters.items():
+        _require_fields(
+            parameter,
+            f"parameters.{parameter_id}",
+            {
+                "id", "unit", "lower_bound", "upper_bound",
+                "initial", "fitted", "truth",
+            },
+            exact=True,
+        )
+        lower = _finite(parameter.get("lower_bound"), f"parameters.{parameter_id}.lower_bound")
+        upper = _finite(parameter.get("upper_bound"), f"parameters.{parameter_id}.upper_bound")
+        initial = _finite(parameter.get("initial"), f"parameters.{parameter_id}.initial")
+        if not lower < upper or not lower <= initial <= upper:
+            raise ContractError(f"parameters.{parameter_id}: invalid bounds or initial value")
+        fitted = parameter.get("fitted")
+        if status == "COMPLETE":
+            fitted_value = _finite(fitted, f"parameters.{parameter_id}.fitted")
+            if not lower <= fitted_value <= upper:
+                raise ContractError(f"parameters.{parameter_id}.fitted: outside bounds")
+        elif fitted is not None:
+            raise ContractError("blocked or failed fit parameters must not report fitted values")
+        truth = parameter.get("truth")
+        if truth is not None:
+            _finite(truth, f"parameters.{parameter_id}.truth")
+        if not isinstance(parameter.get("unit"), str) or not parameter["unit"]:
+            raise ContractError(f"parameters.{parameter_id}.unit: must be a string")
+
+    optimizer = _mapping(root["optimizer"], "InversePhysicsFit.optimizer")
+    _require_fields(
+        optimizer,
+        "InversePhysicsFit.optimizer",
+        {
+            "method", "seed", "population_size", "generations",
+            "coordinate_iterations", "objective_evaluations",
+        },
+        exact=True,
+    )
+    if optimizer.get("method") != "bounded_differential_evolution_with_coordinate_refinement":
+        raise ContractError("InversePhysicsFit.optimizer.method: unsupported")
+    for field in (
+        "seed", "population_size", "generations",
+        "coordinate_iterations", "objective_evaluations",
+    ):
+        value = _integer(optimizer.get(field), f"optimizer.{field}")
+        if value < 0:
+            raise ContractError(f"optimizer.{field}: must be >= 0")
+
+    outputs = _mapping(root["outputs"], "InversePhysicsFit.outputs")
+    _require_fields(
+        outputs,
+        "InversePhysicsFit.outputs",
+        {"fitted_physical_scene", "simulated_world_state"},
+        exact=True,
+    )
+    for name in ("fitted_physical_scene", "simulated_world_state"):
+        artifact = outputs.get(name)
+        if status == "COMPLETE":
+            artifact = _mapping(artifact, f"outputs.{name}")
+            _require_fields(artifact, f"outputs.{name}", {"uri", "sha256"}, exact=True)
+            if not isinstance(artifact.get("uri"), str) or not artifact["uri"]:
+                raise ContractError(f"outputs.{name}.uri: must be a string")
+            _sha256(artifact.get("sha256"), f"outputs.{name}.sha256")
+        elif artifact is not None:
+            raise ContractError("blocked or failed fit must not report output artifacts")
+
+    execution = _mapping(root["execution"], "InversePhysicsFit.execution")
+    _require_fields(
+        execution,
+        "InversePhysicsFit.execution",
+        {"wall_seconds", "peak_gpu_memory_bytes"},
+        exact=True,
+    )
+    if _finite(execution.get("wall_seconds"), "execution.wall_seconds") < 0.0:
+        raise ContractError("execution.wall_seconds: must be >= 0")
+    if _integer(execution.get("peak_gpu_memory_bytes"), "execution.peak_gpu_memory_bytes") < 0:
+        raise ContractError("execution.peak_gpu_memory_bytes: must be >= 0")
+
+    validation = _mapping(root["validation"], "InversePhysicsFit.validation")
+    _require_fields(
+        validation,
+        "InversePhysicsFit.validation",
+        {"passed", "rollout_valid", "synthetic_recovery"},
+        exact=True,
+    )
+    if not isinstance(validation.get("passed"), bool):
+        raise ContractError("InversePhysicsFit.validation.passed: must be a boolean")
+    if not isinstance(validation.get("rollout_valid"), bool):
+        raise ContractError("InversePhysicsFit.validation.rollout_valid: must be a boolean")
+    recovery = _mapping(validation.get("synthetic_recovery"), "validation.synthetic_recovery")
+    _require_fields(
+        recovery,
+        "validation.synthetic_recovery",
+        {"performed", "within_tolerance", "max_normalized_parameter_error"},
+        exact=True,
+    )
+    if not isinstance(recovery.get("performed"), bool):
+        raise ContractError("synthetic_recovery.performed: must be a boolean")
+    if recovery["performed"]:
+        if not isinstance(recovery.get("within_tolerance"), bool):
+            raise ContractError("synthetic_recovery.within_tolerance: must be a boolean")
+        if _finite(
+            recovery.get("max_normalized_parameter_error"),
+            "synthetic_recovery.max_normalized_parameter_error",
+        ) < 0.0:
+            raise ContractError("synthetic recovery error must be >= 0")
+        if status == "COMPLETE" and recovery["within_tolerance"] is not True:
+            raise ContractError("complete synthetic recovery must be within tolerance")
+    elif (
+        recovery.get("within_tolerance") is not None
+        or recovery.get("max_normalized_parameter_error") is not None
+    ):
+        raise ContractError("unperformed synthetic recovery metrics must be null")
+
+    blockers = _sequence(root["blockers"], "InversePhysicsFit.blockers")
+    warnings = _sequence(root["warnings"], "InversePhysicsFit.warnings")
+    failures = _sequence(root["failures"], "InversePhysicsFit.failures")
+    if status == "COMPLETE":
+        if blockers or failures or validation["passed"] is not True or validation["rollout_valid"] is not True:
+            raise ContractError("complete inverse fit must pass without blockers or failures")
+    elif status == "BLOCKED_INPUT" and not blockers:
+        raise ContractError("blocked inverse fit requires at least one blocker")
+    elif status == "FAILED" and not failures:
+        raise ContractError("failed inverse fit requires at least one failure")
+    canonical_json_bytes(root)
+    return root
+
+
+def validate_inverse_fit_artifacts(
+    report_document: Mapping[str, Any],
+    template_scene_document: Mapping[str, Any],
+    motion_document: Mapping[str, Any],
+    fitted_scene_document: Mapping[str, Any],
+    rollout_document: Mapping[str, Any],
+    *,
+    fitted_scene_path: Path,
+    rollout_path: Path,
+) -> None:
+    """Verify IDs and hashes across one complete P5 artifact set."""
+
+    report = validate_inverse_physics_fit(report_document)
+    if report["status"] != "COMPLETE":
+        raise ContractError("inverse fit artifact linkage requires COMPLETE status")
+    template = validate_physical_scene(template_scene_document)
+    motion = validate_physical_motion_observation(motion_document)
+    fitted_scene = validate_physical_scene(fitted_scene_document)
+    validate_rollout_source(rollout_document, fitted_scene)
+
+    template_source = report["source"]["template_physical_scene"]
+    if template_source["id"] != template["scene_id"]:
+        raise ContractError("inverse fit template scene ID does not match")
+    template_hash = hashlib.sha256(canonical_json_bytes(template)).hexdigest()
+    if template_source["sha256"] != template_hash:
+        raise ContractError("inverse fit template scene hash does not match")
+
+    motion_source = report["source"]["motion_observation"]
+    if motion_source["id"] != motion["observation_id"]:
+        raise ContractError("inverse fit motion observation ID does not match")
+    motion_hash = hashlib.sha256(canonical_json_bytes(motion)).hexdigest()
+    if motion_source["sha256"] != motion_hash:
+        raise ContractError("inverse fit motion observation hash does not match")
+    if report["objective"]["sample_count"] != len(motion["track"]["samples"]):
+        raise ContractError("inverse fit objective sample count does not match motion")
+    if motion["track"]["body_id"] != fitted_scene["model"]["bodies"][0]["id"]:
+        raise ContractError("inverse fit motion body does not match fitted scene")
+
+    scene_observation = report["source"]["scene_observation"]
+    if motion["source"]["kind"] == "scene_observation_human_root":
+        if scene_observation != {
+            "id": motion["source"]["id"],
+            "sha256": motion["source"]["sha256"],
+        }:
+            raise ContractError("inverse fit SceneObservation source does not match motion")
+    elif scene_observation is not None:
+        raise ContractError("synthetic inverse fit must not claim a SceneObservation source")
+
+    for name, path in (
+        ("fitted_physical_scene", fitted_scene_path),
+        ("simulated_world_state", rollout_path),
+    ):
+        artifact = report["outputs"][name]
+        if artifact["uri"] != path.name:
+            raise ContractError(f"inverse fit {name} URI does not match output file")
+        actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        if artifact["sha256"] != actual_hash:
+            raise ContractError(f"inverse fit {name} hash does not match output file")
+
+
 def validate_rollout_source(
     rollout: Mapping[str, Any],
     physical_scene: Mapping[str, Any],
@@ -784,4 +1167,8 @@ def load_contract(path: Path) -> Mapping[str, Any]:
         return validate_physical_scene(document)
     if schema == SIMULATED_WORLD_STATE_SCHEMA:
         return validate_simulated_world_state(document)
+    if schema == PHYSICAL_MOTION_OBSERVATION_SCHEMA:
+        return validate_physical_motion_observation(document)
+    if schema == INVERSE_PHYSICS_FIT_SCHEMA:
+        return validate_inverse_physics_fit(document)
     raise ContractError(f"{path}: unknown schema {schema!r}")

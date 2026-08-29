@@ -9,7 +9,12 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 
-from reconstruction.contracts import load_contract, validate_rollout_source
+from reconstruction.contracts import (
+    load_contract,
+    validate_inverse_fit_artifacts,
+    validate_inverse_physics_fit,
+    validate_rollout_source,
+)
 
 
 def register_physics_routes(
@@ -59,5 +64,73 @@ def register_physics_routes(
             }
         except subprocess.TimeoutExpired as error:
             raise HTTPException(504, "P4 physics subprocess exceeded 180 seconds") from error
+        finally:
+            run_lock.release()
+
+    @app.post("/api/physics-fit-fixture")
+    def run_physics_fit_fixture() -> dict:
+        physics_python = root / ".venv-physics" / "Scripts" / "python.exe"
+        scene_path = (
+            root
+            / "contracts"
+            / "3d"
+            / "v1"
+            / "examples"
+            / "physical_scene_tether_fit_template.json"
+        )
+        if not physics_python.is_file():
+            raise HTTPException(400, "missing .venv-physics. Run scripts\\setup-physics.ps1.")
+        if not run_lock.acquire(blocking=False):
+            raise HTTPException(409, "another GPU stage is already running")
+        try:
+            output_dir = jobs_root / f"physics-fit-{uuid.uuid4().hex[:12]}"
+            completed = subprocess.run(
+                [
+                    str(physics_python),
+                    "-m",
+                    "physics3d.fit_physical_scene",
+                    str(scene_path),
+                    "--fixture",
+                    "--output",
+                    str(output_dir),
+                ],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=360,
+                check=False,
+            )
+            if completed.returncode != 0:
+                detail = (
+                    completed.stderr
+                    or completed.stdout
+                    or "physics fit subprocess failed"
+                ).strip()
+                raise HTTPException(400, detail)
+            report = dict(load_contract(output_dir / "inverse_physics_fit.json"))
+            motion = dict(load_contract(output_dir / "target_motion_observation.json"))
+            rollout = dict(load_contract(output_dir / "simulated_world_state.json"))
+            scene = dict(load_contract(output_dir / "fitted_physical_scene.json"))
+            template = dict(load_contract(scene_path))
+            validate_inverse_physics_fit(report)
+            validate_rollout_source(rollout, scene)
+            validate_inverse_fit_artifacts(
+                report,
+                template,
+                motion,
+                scene,
+                rollout,
+                fitted_scene_path=output_dir / "fitted_physical_scene.json",
+                rollout_path=output_dir / "simulated_world_state.json",
+            )
+            return {
+                "fit": report,
+                "motion_observation": motion,
+                "physical_scene": scene,
+                "rollout": rollout,
+                "stdout": completed.stdout,
+            }
+        except subprocess.TimeoutExpired as error:
+            raise HTTPException(504, "P5 physics fit exceeded 360 seconds") from error
         finally:
             run_lock.release()

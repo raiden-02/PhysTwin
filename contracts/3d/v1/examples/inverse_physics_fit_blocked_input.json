@@ -1,0 +1,93 @@
+{
+  "schema": "phystwin.inverse_physics_fit",
+  "version": 1,
+  "fit_id": "blocked-4941c672b568",
+  "status": "BLOCKED_INPUT",
+  "source": {
+    "template_physical_scene": {
+      "id": "p5-tether-fit-template",
+      "sha256": "fcc3dba0319c0e6601049c0ee7fdf839c8176154fa3768394483827e2719bcd8"
+    },
+    "motion_observation": null,
+    "scene_observation": {
+      "id": "example-camera-and-scene",
+      "sha256": "f12fc5806c0343b33b8d8fc6994c01dc796552c40bb4b81843850eb81ad81797"
+    }
+  },
+  "profile": "tether_length_initial_tangent_velocity_v1",
+  "objective": {
+    "type": "weighted_position_mse_3d",
+    "sample_count": 0,
+    "mse_m2": null,
+    "rmse_m": null,
+    "trajectory_extent_m": null,
+    "normalized_rmse": null,
+    "initial_mse_m2": null,
+    "improvement_ratio": null
+  },
+  "parameters": [
+    {
+      "id": "rest_length_m",
+      "unit": "meter",
+      "lower_bound": 1.6,
+      "upper_bound": 2.4,
+      "initial": 1.78,
+      "fitted": null,
+      "truth": null
+    },
+    {
+      "id": "initial_tangent_velocity_u_m_s",
+      "unit": "meter_per_second",
+      "lower_bound": -0.6,
+      "upper_bound": 0.6,
+      "initial": -0.12,
+      "fitted": null,
+      "truth": null
+    },
+    {
+      "id": "initial_tangent_velocity_v_m_s",
+      "unit": "meter_per_second",
+      "lower_bound": -0.6,
+      "upper_bound": 0.6,
+      "initial": 0.14,
+      "fitted": null,
+      "truth": null
+    }
+  ],
+  "optimizer": {
+    "method": "bounded_differential_evolution_with_coordinate_refinement",
+    "seed": 1347705141,
+    "population_size": 0,
+    "generations": 0,
+    "coordinate_iterations": 0,
+    "objective_evaluations": 0
+  },
+  "outputs": {
+    "fitted_physical_scene": null,
+    "simulated_world_state": null
+  },
+  "execution": {
+    "wall_seconds": 0.0,
+    "peak_gpu_memory_bytes": 0
+  },
+  "validation": {
+    "passed": false,
+    "rollout_valid": false,
+    "synthetic_recovery": {
+      "performed": false,
+      "within_tolerance": null,
+      "max_normalized_parameter_error": null
+    }
+  },
+  "blockers": [
+    "SceneObservation scale must be metric_measured; got relative",
+    "SceneObservation has no finite meters_per_world_unit",
+    "PhysicalScene observation_sha256 does not match SceneObservation",
+    "PhysicalScene scale_source must be measured",
+    "PhysicalScene alignment_source must be measured",
+    "PhysicalScene has no measured T_scene_observation_m",
+    "SceneObservation has no humans.v1 body track"
+  ],
+  "warnings": [],
+  "failures": []
+}

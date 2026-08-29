@@ -1,0 +1,63 @@
+{
+  "schema": "phystwin.physical_motion_observation",
+  "version": 1,
+  "observation_id": "p5-tether-fit-example-motion",
+  "source": {
+    "kind": "synthetic_rollout",
+    "id": "p5-tether-fit-template-08b14f962193",
+    "sha256": "40447522b33f8c29f3241809e0ce12de012cda4d98f842b9cc1b69425d94fdfb"
+  },
+  "coordinates": {
+    "handedness": "right",
+    "up_axis": "+Y",
+    "transform_notation": "T_parent_child",
+    "vector_convention": "column"
+  },
+  "units": {
+    "length": "meter",
+    "time": "second"
+  },
+  "track": {
+    "body_id": "bob",
+    "point": "body_origin",
+    "samples": [
+      {
+        "sample_index": 0,
+        "timestamp_s": 0.0,
+        "position_m": [1.2480000257492065, 1.2899999618530273, 0.5790475010871887],
+        "weight": 1.0
+      },
+      {
+        "sample_index": 1,
+        "timestamp_s": 0.03333333333333333,
+        "position_m": [1.246282696723938, 1.290132999420166, 0.5896260142326355],
+        "weight": 1.0
+      },
+      {
+        "sample_index": 2,
+        "timestamp_s": 0.06666666666666667,
+        "position_m": [1.2410171031951904, 1.2838445901870728, 0.5985096096992493],
+        "weight": 1.0
+      },
+      {
+        "sample_index": 3,
+        "timestamp_s": 0.1,
+        "position_m": [1.2319308519363403, 1.2715691328048706, 0.6055318713188171],
+        "weight": 1.0
+      }
+    ]
+  },
+  "provenance": {
+    "synthetic": true,
+    "generator": "Newton/Warp SimulatedWorldState decimation",
+    "sample_stride": 2,
+    "noise_sigma_m": 0.0,
+    "truth_parameters": {
+      "rest_length_m": 2.08,
+      "initial_tangent_velocity_u_m_s": 0.31,
+      "initial_tangent_velocity_v_m_s": -0.23
+    },
+    "note": "This compact contract example keeps the first four samples. The CLI fixture uses all 31 samples."
+  },
+  "warnings": []
+}

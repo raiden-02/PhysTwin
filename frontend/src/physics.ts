@@ -96,3 +96,74 @@ export type PhysicsFixtureResult = {
   rollout: SimulatedWorldState;
   stdout: string;
 };
+
+export type PhysicalMotionObservation = {
+  schema: string;
+  version: number;
+  observation_id: string;
+  source: { kind: string; id: string; sha256: string };
+  track: {
+    body_id: string;
+    point: "body_origin";
+    samples: Array<{
+      sample_index: number;
+      timestamp_s: number;
+      position_m: [number, number, number];
+      weight: number;
+    }>;
+  };
+};
+
+export type InversePhysicsFit = {
+  schema: string;
+  version: number;
+  fit_id: string;
+  status: "COMPLETE" | "BLOCKED_INPUT" | "FAILED";
+  profile: string;
+  objective: {
+    sample_count: number;
+    mse_m2: number;
+    rmse_m: number;
+    normalized_rmse: number;
+    trajectory_extent_m: number;
+    initial_mse_m2: number;
+    improvement_ratio: number;
+  };
+  parameters: Array<{
+    id: string;
+    unit: string;
+    lower_bound: number;
+    upper_bound: number;
+    initial: number;
+    fitted: number;
+    truth: number | null;
+  }>;
+  optimizer: {
+    seed: number;
+    population_size: number;
+    generations: number;
+    coordinate_iterations: number;
+    objective_evaluations: number;
+  };
+  execution: { wall_seconds: number; peak_gpu_memory_bytes: number };
+  validation: {
+    passed: boolean;
+    rollout_valid: boolean;
+    synthetic_recovery: {
+      performed: boolean;
+      within_tolerance: boolean | null;
+      max_normalized_parameter_error: number | null;
+    };
+  };
+  blockers: string[];
+  warnings: string[];
+  failures: string[];
+};
+
+export type PhysicsFitFixtureResult = {
+  fit: InversePhysicsFit;
+  motion_observation: PhysicalMotionObservation;
+  physical_scene: PhysicalScene;
+  rollout: SimulatedWorldState;
+  stdout: string;
+};

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { runPhysicsFixture } from "./api";
+import { runPhysicsFitFixture, runPhysicsFixture } from "./api";
 import { PhysicsScene } from "./PhysicsScene";
-import type { PhysicsFixtureResult } from "./physics";
+import type { PhysicsFitFixtureResult, PhysicsFixtureResult } from "./physics";
 
 function fmt(value: number, digits = 3): string {
   return value.toFixed(digits);
@@ -13,7 +13,9 @@ function memorySize(bytes: number): string {
 }
 
 export function PhysicsApp() {
-  const [result, setResult] = useState<PhysicsFixtureResult | null>(null);
+  const [result, setResult] = useState<PhysicsFixtureResult | PhysicsFitFixtureResult | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [time, setTime] = useState(0);
@@ -53,12 +55,27 @@ export function PhysicsApp() {
     }
   }
 
+  async function runFitFixture() {
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await runPhysicsFitFixture();
+      setResult(next);
+      setTime(next.rollout.timeline.start_time_s);
+      setPlaying(false);
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : String(problem));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!result) {
     return (
       <>
         {error ? <div className="banner bad">{error}</div> : null}
         <section className="panel">
-          <h2>P4 executable physics</h2>
+          <h2>Executable 3D physics</h2>
           <p className="hint">
             Run the project-owned tether scene in Newton XPBD on CUDA. The browser displays the
             saved rollout and does not integrate physics.
@@ -66,12 +83,16 @@ export function PhysicsApp() {
           <button className="primary" type="button" disabled={busy} onClick={() => void runFixture()}>
             {busy ? "Running Newton/Warp..." : "Inspect P4 physics fixture"}
           </button>
+          <button type="button" disabled={busy} onClick={() => void runFitFixture()}>
+            {busy ? "GPU stage running..." : "Inspect P5 synthetic fit"}
+          </button>
         </section>
       </>
     );
   }
 
   const rollout = result.rollout;
+  const fitResult = "fit" in result ? result : null;
   const constraint = rollout.constraints[0];
   const ranges = rollout.validation.body_position_range_m;
   const repeat = rollout.reproducibility.repeat_run;
@@ -85,13 +106,23 @@ export function PhysicsApp() {
           {rollout.simulator.device_name}
         </span>
         <button type="button" disabled={busy} onClick={() => void runFixture()}>
-          Run again
+          Run P4
+        </button>
+        <button type="button" disabled={busy} onClick={() => void runFitFixture()}>
+          Run P5 fit
         </button>
       </div>
 
       <div className="pane media physics-pane">
-        <h2>Simulated 3D rollout</h2>
-        <PhysicsScene rollout={rollout} time={time} />
+        <h2>{fitResult ? "Observed and fitted 3D motion" : "Simulated 3D rollout"}</h2>
+        <PhysicsScene
+          rollout={rollout}
+          time={time}
+          motionObservation={fitResult?.motion_observation}
+        />
+        {fitResult ? (
+          <p className="hint">Blue: target samples. Orange: fitted Newton rollout.</p>
+        ) : null}
       </div>
       <div className="transport">
         <button type="button" onClick={() => setPlaying((current) => !current)}>
@@ -112,12 +143,42 @@ export function PhysicsApp() {
       </div>
 
       <div className="verdict">
-        <strong>{rollout.validation.passed ? "P4 invariants pass" : "P4 validation failed"}</strong>
+        <strong>
+          {fitResult
+            ? fitResult.fit.validation.passed
+              ? "P5 synthetic recovery passes"
+              : "P5 fit validation failed"
+            : rollout.validation.passed
+              ? "P4 invariants pass"
+              : "P4 validation failed"}
+        </strong>
         <span>
-          The line endpoint, body transform, and trajectory come from{" "}
-          <code>SimulatedWorldState</code>.
+          {fitResult
+            ? "The target is PhysicalMotionObservation. The orange path is the fitted SimulatedWorldState."
+            : "The line endpoint, body transform, and trajectory come from SimulatedWorldState."}
         </span>
       </div>
+      {fitResult ? (
+        <div className="cards">
+          <div className="card">
+            <span className="label">fit RMSE</span>
+            <span className="value">{fmt(fitResult.fit.objective.rmse_m * 1000, 2)} mm</span>
+            <span className="sub">
+              normalized {fmt(fitResult.fit.objective.normalized_rmse, 6)}
+            </span>
+          </div>
+          {fitResult.fit.parameters.map((parameter) => (
+            <div className="card" key={parameter.id}>
+              <span className="label">{parameter.id}</span>
+              <span className="value">{fmt(parameter.fitted, 4)}</span>
+              <span className="sub">
+                truth {parameter.truth === null ? "not recorded" : fmt(parameter.truth, 4)}{" "}
+                {parameter.unit}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="cards">
         <div className="card">
           <span className="label">tether max / RMS</span>

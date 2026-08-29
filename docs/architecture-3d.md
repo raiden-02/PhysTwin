@@ -597,6 +597,45 @@ licenses, exact payload, validation, and measured runtime.
 P4 does not fit the scene to DA3 or TRAM, add articulated-human physics,
 introduce counterfactual controls, or start P5.
 
+## P5 status
+
+P5 adds one bounded inverse-physics profile:
+
+```text
+PhysicalMotionObservation
+  -> bounded differential evolution and coordinate refinement
+  -> repeated Newton/Warp objective rollouts
+  -> fitted PhysicalScene
+  -> validated SimulatedWorldState
+  -> InversePhysicsFit
+```
+
+The profile fits tether rest length and two initial tangent-velocity
+components. The anchor, attachment, gravity, mass, body shape, solver, and
+timestep remain fixed. Candidate initial geometry is repaired so the body
+attachment starts exactly at the candidate rest length.
+
+The objective is weighted 3D body-origin position MSE in square meters. The
+optimizer uses a fixed seed and finite bounds. The final candidate goes through
+the full P4 rollout and validation path.
+
+Synthetic evidence comes from a known-parameter Newton rollout. The P1/P2
+adapter has a strict gate for `metric_measured` scale, matching source hashes,
+measured rigid alignment, enough visible pelvis samples, and observable XYZ
+motion. Existing DA3 and TRAM results do not pass this gate. Their real fit
+status is `BLOCKED_INPUT`; P5 does not reinterpret relative or assumed units as
+measured meters.
+
+The new JSON boundaries are `phystwin.physical_motion_observation` and
+`phystwin.inverse_physics_fit`. Three.js overlays the target samples and the
+fitted `SimulatedWorldState`. It does not run the optimizer or simulator.
+
+See [`physics-fitting-p5.md`](physics-fitting-p5.md) for exact parameters,
+bounds, objective, commands, failure modes, and measured synthetic recovery.
+
+P5 does not add articulated-human dynamics, active control, inferred forces,
+topology search, VLM hypotheses, or counterfactual controls.
+
 ## P0 exclusions
 
 P0 does not:

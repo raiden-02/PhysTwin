@@ -2,11 +2,12 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { nearestSampleIndex } from "./obsMath";
-import type { SimulatedWorldState } from "./physics";
+import type { PhysicalMotionObservation, SimulatedWorldState } from "./physics";
 
 type Props = {
   rollout: SimulatedWorldState;
   time: number;
+  motionObservation?: PhysicalMotionObservation;
 };
 
 function setRowMajor(matrix: THREE.Matrix4, values: number[]) {
@@ -18,11 +19,12 @@ function setRowMajor(matrix: THREE.Matrix4, values: number[]) {
   );
 }
 
-export function PhysicsScene({ rollout, time }: Props) {
+export function PhysicsScene({ rollout, time, motionObservation }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const bodyRef = useRef<THREE.Mesh | null>(null);
+  const observedBodyRef = useRef<THREE.Mesh | null>(null);
   const tetherRef = useRef<THREE.BufferGeometry | null>(null);
   const viewRef = useRef<{
     scene: THREE.Scene;
@@ -85,6 +87,38 @@ export function PhysicsScene({ rollout, time }: Props) {
       ),
     );
 
+    if (motionObservation) {
+      const observedPositions = new Float32Array(
+        motionObservation.track.samples.length * 3,
+      );
+      motionObservation.track.samples.forEach((sample, index) => {
+        observedPositions.set(sample.position_m, index * 3);
+      });
+      const observedGeometry = new THREE.BufferGeometry();
+      observedGeometry.setAttribute(
+        "position",
+        new THREE.BufferAttribute(observedPositions, 3),
+      );
+      scene.add(
+        new THREE.Line(
+          observedGeometry,
+          new THREE.LineBasicMaterial({ color: 0x30b4dc }),
+        ),
+      );
+      scene.add(
+        new THREE.Points(
+          observedGeometry,
+          new THREE.PointsMaterial({ color: 0x30b4dc, size: 0.055 }),
+        ),
+      );
+      const observedBody = new THREE.Mesh(
+        new THREE.SphereGeometry(body.shape.radius_m * 0.55, 18, 12),
+        new THREE.MeshBasicMaterial({ color: 0x30b4dc }),
+      );
+      scene.add(observedBody);
+      observedBodyRef.current = observedBody;
+    }
+
     const tetherGeometry = new THREE.BufferGeometry();
     tetherGeometry.setAttribute(
       "position",
@@ -123,6 +157,7 @@ export function PhysicsScene({ rollout, time }: Props) {
         if (
           object instanceof THREE.Mesh ||
           object instanceof THREE.Line ||
+          object instanceof THREE.Points ||
           object instanceof THREE.GridHelper
         ) {
           object.geometry.dispose();
@@ -133,10 +168,11 @@ export function PhysicsScene({ rollout, time }: Props) {
       });
       rendererRef.current = null;
       bodyRef.current = null;
+      observedBodyRef.current = null;
       tetherRef.current = null;
       viewRef.current = null;
     };
-  }, [rollout]);
+  }, [motionObservation, rollout]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -160,8 +196,18 @@ export function PhysicsScene({ rollout, time }: Props) {
     positions.setXYZ(1, attachment.x, attachment.y, attachment.z);
     positions.needsUpdate = true;
     tetherGeometry.computeBoundingSphere();
+    if (motionObservation && observedBodyRef.current) {
+      const observedSamples = motionObservation.track.samples;
+      const observedIndex = nearestSampleIndex(
+        observedSamples.map((value) => value.timestamp_s),
+        time,
+      );
+      observedBodyRef.current.position.fromArray(
+        observedSamples[observedIndex]?.position_m ?? observedSamples[0].position_m,
+      );
+    }
     renderer.render(view.scene, view.camera);
-  }, [rollout, time]);
+  }, [motionObservation, rollout, time]);
 
   return (
     <div className="scene-wrap physics-scene" ref={wrapRef}>

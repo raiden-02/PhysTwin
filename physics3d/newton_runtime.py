@@ -36,6 +36,24 @@ class RunData:
     simulator: dict[str, Any]
 
 
+@dataclass
+class TetherRuntime:
+    model: newton.Model
+    solver: newton.solvers.SolverXPBD
+    state_0: newton.State
+    state_1: newton.State
+    control: newton.Control
+    body_index: int
+    device: wp.context.Device
+
+
+@dataclass(frozen=True)
+class PositionRun:
+    positions_m: tuple[tuple[float, float, float], ...]
+    wall_seconds: float
+    peak_gpu_memory_bytes: int
+
+
 def _matrix_to_quaternion(values: list[float]) -> tuple[float, float, float, float]:
     """Convert the contract's row-major rotation to an XYZW quaternion."""
 
@@ -104,7 +122,7 @@ def _read_state(state: newton.State, body_index: int) -> tuple[tuple[float, ...]
     return transform, linear, angular  # type: ignore[return-value]
 
 
-def _run_once(scene: dict[str, Any]) -> RunData:
+def _build_runtime(scene: dict[str, Any]) -> TetherRuntime:
     execution = scene["execution"]
     body = scene["model"]["bodies"][0]
     constraint = scene["model"]["constraints"][0]
@@ -118,8 +136,6 @@ def _run_once(scene: dict[str, Any]) -> RunData:
     if not device.is_cuda:
         raise RuntimeError(f"P4 requires a CUDA device, got {device}")
     newton.use_coord_layout_targets = True
-
-    started = time.perf_counter()
 
     transform = body["T_world_body_initial"]
     quaternion = _matrix_to_quaternion(transform)
@@ -172,6 +188,21 @@ def _run_once(scene: dict[str, Any]) -> RunData:
     state_0 = model.state()
     state_1 = model.state()
     control = model.control()
+    return TetherRuntime(
+        model=model,
+        solver=solver,
+        state_0=state_0,
+        state_1=state_1,
+        control=control,
+        body_index=body_index,
+        device=device,
+    )
+
+
+def _run_once(scene: dict[str, Any]) -> RunData:
+    execution = scene["execution"]
+    started = time.perf_counter()
+    runtime = _build_runtime(scene)
 
     duration = float(execution["duration_s"])
     step = float(execution["fixed_step_s"])
@@ -184,21 +215,30 @@ def _run_once(scene: dict[str, Any]) -> RunData:
     angular_velocities: list[tuple[float, float, float]] = []
 
     def record() -> None:
-        current_transform, linear, angular = _read_state(state_0, body_index)
+        current_transform, linear, angular = _read_state(
+            runtime.state_0,
+            runtime.body_index,
+        )
         transforms.append(current_transform)
         linear_velocities.append(linear)
         angular_velocities.append(angular)
 
     record()
     for _ in range(steps):
-        state_0.clear_forces()
-        solver.step(state_0, state_1, control, None, step)
-        state_0, state_1 = state_1, state_0
+        runtime.state_0.clear_forces()
+        runtime.solver.step(
+            runtime.state_0,
+            runtime.state_1,
+            runtime.control,
+            None,
+            step,
+        )
+        runtime.state_0, runtime.state_1 = runtime.state_1, runtime.state_0
         record()
 
-    wp.synchronize_device(device)
-    peak_gpu_memory = int(wp.get_mempool_used_mem_high(device))
-    gravity_array = np.asarray(model.gravity.numpy(), dtype=np.float64).reshape(-1)
+    wp.synchronize_device(runtime.device)
+    peak_gpu_memory = int(wp.get_mempool_used_mem_high(runtime.device))
+    gravity_array = np.asarray(runtime.model.gravity.numpy(), dtype=np.float64).reshape(-1)
     backend_gravity = tuple(float(item) for item in gravity_array[:3])
     wall_seconds = time.perf_counter() - started
     toolkit = wp.get_cuda_toolkit_version()
@@ -210,8 +250,8 @@ def _run_once(scene: dict[str, Any]) -> RunData:
         "solver": "xpbd",
         "warp_version": wp.__version__,
         "warp_revision": WARP_REVISION,
-        "device": str(device),
-        "device_name": device.name,
+        "device": str(runtime.device),
+        "device_name": runtime.device.name,
         "up_axis": "+Y",
         "cuda_toolkit": ".".join(str(item) for item in toolkit),
         "cuda_driver_api": ".".join(str(item) for item in driver),
@@ -226,6 +266,80 @@ def _run_once(scene: dict[str, Any]) -> RunData:
         peak_gpu_memory_bytes=peak_gpu_memory,
         memory_measurement="Warp CUDA mempool used-memory high-water mark",
         simulator=simulator,
+    )
+
+
+def simulate_body_positions(
+    document: dict[str, Any],
+    timestamps_s: list[float] | tuple[float, ...],
+) -> PositionRun:
+    """Run Newton and sample body-origin positions at requested timestamps."""
+
+    scene = dict(validate_physical_scene(document))
+    execution = scene["execution"]
+    start_time = float(execution["start_time_s"])
+    duration = float(execution["duration_s"])
+    fixed_step = float(execution["fixed_step_s"])
+    times = tuple(float(value) for value in timestamps_s)
+    if not times:
+        raise ValueError("timestamps_s must not be empty")
+    if any(not math.isfinite(value) for value in times):
+        raise ValueError("timestamps_s must be finite")
+    if any(times[index] >= times[index + 1] for index in range(len(times) - 1)):
+        raise ValueError("timestamps_s must be strictly increasing")
+    if times[0] < start_time - 1e-12 or times[-1] > start_time + duration + 1e-12:
+        raise ValueError("timestamps_s must lie inside the PhysicalScene timeline")
+
+    started = time.perf_counter()
+    runtime = _build_runtime(scene)
+    coordinates = tuple((timestamp - start_time) / fixed_step for timestamp in times)
+    required_steps = {
+        step_index
+        for coordinate in coordinates
+        for step_index in (
+            int(math.floor(coordinate + 1e-12)),
+            int(math.ceil(coordinate - 1e-12)),
+        )
+    }
+    last_step = max(required_steps)
+    positions: dict[int, tuple[float, float, float]] = {}
+
+    def read_position() -> tuple[float, float, float]:
+        value = runtime.state_0.body_q.numpy()[runtime.body_index]
+        return float(value[0]), float(value[1]), float(value[2])
+
+    if 0 in required_steps:
+        positions[0] = read_position()
+    for step_index in range(1, last_step + 1):
+        runtime.state_0.clear_forces()
+        runtime.solver.step(
+            runtime.state_0,
+            runtime.state_1,
+            runtime.control,
+            None,
+            fixed_step,
+        )
+        runtime.state_0, runtime.state_1 = runtime.state_1, runtime.state_0
+        if step_index in required_steps:
+            positions[step_index] = read_position()
+
+    sampled: list[tuple[float, float, float]] = []
+    for coordinate in coordinates:
+        lower = int(math.floor(coordinate + 1e-12))
+        upper = int(math.ceil(coordinate - 1e-12))
+        alpha = max(0.0, min(1.0, coordinate - lower))
+        sampled.append(
+            tuple(
+                positions[lower][axis] * (1.0 - alpha)
+                + positions[upper][axis] * alpha
+                for axis in range(3)
+            )
+        )
+    wp.synchronize_device(runtime.device)
+    return PositionRun(
+        positions_m=tuple(sampled),  # type: ignore[arg-type]
+        wall_seconds=time.perf_counter() - started,
+        peak_gpu_memory_bytes=int(wp.get_mempool_used_mem_high(runtime.device)),
     )
 
 

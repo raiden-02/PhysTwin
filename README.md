@@ -86,6 +86,27 @@ and select **Inspect P4 physics fixture**. See
 [docs/physics-runtime-p4.md](docs/physics-runtime-p4.md) for the contract,
 coordinate conversion, versions, and measured invariants.
 
+P5 fits the P4 tether rest length and two initial tangent-velocity components
+to metric 3D body-origin samples:
+
+```powershell
+.\.venv-physics\Scripts\python.exe -m physics3d.fit_physical_scene `
+  contracts\3d\v1\examples\physical_scene_tether_fit_template.json `
+  --fixture `
+  --output results\physics3d\p5-tether-fit
+```
+
+The synthetic fixture has known values and writes a
+`PhysicalMotionObservation`, fitted `PhysicalScene`, final
+`SimulatedWorldState`, and `InversePhysicsFit`. In the UI, select
+**Inspect P5 synthetic fit** to compare blue target samples with the orange
+Newton rollout.
+
+Real P1/P2 fitting requires measured metric scale and alignment plus an
+observable 3D pelvis track. Current DA3/TRAM outputs do not meet that gate, so
+the result is `BLOCKED_INPUT`. No real fit values are reported. See
+[docs/physics-fitting-p5.md](docs/physics-fitting-p5.md).
+
 ![Recorded Mixkit tennis: observed vs simulated overlay](docs/demo/mixkit_overlay.gif)
 
 This is the recorded projectile case. Mixkit [Tennis Ball Bouncing in Slow Motion](https://mixkit.co/free-stock-video/tennis-ball-bouncing-in-slow-motion-101289/), 281 frames at 24 fps.

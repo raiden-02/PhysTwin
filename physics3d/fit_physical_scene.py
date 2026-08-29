@@ -13,16 +13,23 @@ sys.path.insert(0, str(ROOT))
 
 from physics3d.inverse_fit import (  # noqa: E402
     DEFAULT_SEED,
+    FIXED_LENGTH_PROFILE,
+    PROFILE,
     apply_tether_parameters,
     blocked_fit_report,
     fit_tether_scene,
+    select_real_fit_profile,
 )
 from physics3d.motion_observation import (  # noqa: E402
     FitInputBlocked,
+    entity_observation_blockers,
+    motion_observation_from_entities,
     motion_observation_from_rollout,
     motion_observation_from_scene_observation,
     scene_observation_blockers,
 )
+from vision.reconstruction.entities import ENTITIES_EXTENSION  # noqa: E402
+from vision.reconstruction.humans import HUMANS_EXTENSION  # noqa: E402
 from physics3d.newton_runtime import simulate_physical_scene  # noqa: E402
 from vision.reconstruction.contracts import load_contract  # noqa: E402
 
@@ -54,6 +61,13 @@ def parse_args() -> argparse.Namespace:
         help="metric-measured SceneObservation with humans.v1 evidence",
     )
     parser.add_argument("--person-id")
+    parser.add_argument("--entity-id")
+    parser.add_argument(
+        "--profile",
+        choices=(PROFILE, FIXED_LENGTH_PROFILE),
+        default=None,
+        help="omit to choose from calibration: fixed length when tether length set scale",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--population-size", type=int, default=8)
@@ -87,24 +101,53 @@ def main() -> int:
         motion = dict(load_contract(args.motion_observation.resolve()))
     else:
         scene_observation = dict(load_contract(args.scene_observation.resolve()))
-        blockers = scene_observation_blockers(
-            scene_observation,
-            template,
-            person_id=args.person_id,
-        )
-        if blockers:
-            report = blocked_fit_report(template, scene_observation, blockers)
-            _write_json(output / "inverse_physics_fit.json", report)
-            print(json.dumps({"status": "BLOCKED_INPUT", "blockers": blockers}, indent=2))
-            return 2
-        try:
-            motion = motion_observation_from_scene_observation(
+        use_entities = _prefer_entities(scene_observation, args.entity_id, args.person_id)
+        if use_entities:
+            blockers = entity_observation_blockers(
+                scene_observation,
+                template,
+                entity_id=args.entity_id,
+            )
+        else:
+            blockers = scene_observation_blockers(
                 scene_observation,
                 template,
                 person_id=args.person_id,
             )
+        calibration = scene_observation.get("provenance", {}).get("metric_calibration")
+        profile = args.profile or select_real_fit_profile(
+            calibration if isinstance(calibration, dict) else None
+        )
+        if blockers:
+            report = blocked_fit_report(
+                template,
+                scene_observation,
+                blockers,
+                profile=profile,
+            )
+            _write_json(output / "inverse_physics_fit.json", report)
+            print(json.dumps({"status": "BLOCKED_INPUT", "blockers": blockers}, indent=2))
+            return 2
+        try:
+            if use_entities:
+                motion = motion_observation_from_entities(
+                    scene_observation,
+                    template,
+                    entity_id=args.entity_id,
+                )
+            else:
+                motion = motion_observation_from_scene_observation(
+                    scene_observation,
+                    template,
+                    person_id=args.person_id,
+                )
         except FitInputBlocked as error:
-            report = blocked_fit_report(template, scene_observation, error.blockers)
+            report = blocked_fit_report(
+                template,
+                scene_observation,
+                error.blockers,
+                profile=profile,
+            )
             _write_json(output / "inverse_physics_fit.json", report)
             print(
                 json.dumps(
@@ -115,6 +158,15 @@ def main() -> int:
             return 2
         _write_json(output / "target_motion_observation.json", motion)
 
+    profile = args.profile
+    if profile is None and not args.fixture:
+        calibration = motion.get("provenance", {}).get("calibration")
+        profile = select_real_fit_profile(
+            calibration if isinstance(calibration, dict) else None
+        )
+    if profile is None:
+        profile = PROFILE
+
     result = fit_tether_scene(
         template,
         motion,
@@ -124,6 +176,7 @@ def main() -> int:
         generations=args.generations,
         coordinate_iterations=args.coordinate_iterations,
         repeat_check=not args.no_repeat_check,
+        profile=profile,
     )
     fit = result["fit"]
     print(
@@ -142,6 +195,20 @@ def main() -> int:
         )
     )
     return 0
+
+
+def _prefer_entities(
+    observation: dict,
+    entity_id: str | None,
+    person_id: str | None,
+) -> bool:
+    extensions = observation.get("extensions") or {}
+    has_entities = ENTITIES_EXTENSION in extensions
+    if entity_id:
+        return True
+    if person_id:
+        return False
+    return has_entities
 
 
 def _write_json(path: Path, document: dict) -> None:

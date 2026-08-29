@@ -12,9 +12,13 @@ from physics3d.bounded_search import ParameterSpec, bounded_differential_search
 from physics3d.fit_physical_scene import TRUTH_PARAMETERS
 from physics3d.inverse_fit import (
     DEFAULT_PARAMETERS,
+    FIXED_LENGTH_PROFILE,
+    PROFILE,
     apply_tether_parameters,
     blocked_fit_report,
     fit_tether_scene,
+    refuse_circular_length_fit,
+    select_real_fit_profile,
 )
 from physics3d.motion_observation import (
     motion_observation_from_rollout,
@@ -90,6 +94,33 @@ class P5ContractAndSearchTest(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertLess(first.objective, 1e-5)
         self.assertGreater(first.initial_objective, first.objective)
+
+    def test_held_fixed_parameter_stays_at_initial(self) -> None:
+        parameters = (
+            ParameterSpec("x", -2.0, 2.0, -1.5, "unit", held_fixed=True),
+            ParameterSpec("y", -2.0, 2.0, 1.5, "unit"),
+        )
+
+        def objective(values: tuple[float, ...]) -> float:
+            return (values[0] - 0.25) ** 2 + (values[1] + 0.5) ** 2
+
+        result = bounded_differential_search(
+            objective,
+            parameters,
+            seed=7,
+            population_size=8,
+            generations=8,
+            coordinate_iterations=16,
+        )
+        self.assertAlmostEqual(result.values[0], -1.5, places=12)
+        self.assertLess(abs(result.values[1] + 0.5), 1e-4)
+
+    def test_circular_tether_calibration_refuses_length_fit(self) -> None:
+        calibration = {"circular_with_fit_parameter": "rest_length_m"}
+        self.assertEqual(select_real_fit_profile(calibration), FIXED_LENGTH_PROFILE)
+        with self.assertRaisesRegex(ValueError, "cannot be fitted"):
+            refuse_circular_length_fit(calibration, PROFILE)
+        refuse_circular_length_fit(calibration, FIXED_LENGTH_PROFILE)
 
     def test_invalid_motion_sample_order_is_rejected(self) -> None:
         motion = _minimal_motion_observation()
@@ -312,6 +343,7 @@ def _minimal_complete_fit_report() -> dict:
     for parameter in report["parameters"]:
         parameter["fitted"] = parameter["initial"]
         parameter["truth"] = parameter["initial"]
+        parameter["held_fixed"] = False
     report["outputs"] = {
         "fitted_physical_scene": {
             "uri": "fitted_physical_scene.json",

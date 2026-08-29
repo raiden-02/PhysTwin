@@ -1,7 +1,18 @@
 import { useEffect, useState } from "react";
-import { runPhysicsFitFixture, runPhysicsFixture } from "./api";
+import {
+  fetchPhysicsRealFit,
+  inspectPhysicsRealFit,
+  runPhysicsFitFixture,
+  runPhysicsFixture,
+} from "./api";
 import { PhysicsScene } from "./PhysicsScene";
-import type { PhysicsFitFixtureResult, PhysicsFixtureResult } from "./physics";
+import type {
+  PhysicsFitFixtureResult,
+  PhysicsFixtureResult,
+  PhysicsRealFitResult,
+} from "./physics";
+
+type View = PhysicsFixtureResult | PhysicsFitFixtureResult | PhysicsRealFitResult;
 
 function fmt(value: number, digits = 3): string {
   return value.toFixed(digits);
@@ -13,16 +24,14 @@ function memorySize(bytes: number): string {
 }
 
 export function PhysicsApp() {
-  const [result, setResult] = useState<PhysicsFixtureResult | PhysicsFitFixtureResult | null>(
-    null,
-  );
+  const [result, setResult] = useState<View | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
-    if (!playing || !result) return;
+    if (!playing || !result || !("rollout" in result) || !result.rollout) return;
     let frame = 0;
     let previous = performance.now();
     const startTime = result.rollout.timeline.start_time_s;
@@ -55,6 +64,36 @@ export function PhysicsApp() {
     }
   }
 
+  async function inspectRealFit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await inspectPhysicsRealFit();
+      setResult(next);
+      if (next.rollout) {
+        setTime(next.rollout.timeline.start_time_s);
+      }
+      setPlaying(false);
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : String(problem));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    void fetchPhysicsRealFit()
+      .then((next) => {
+        if (next.fit?.status === "COMPLETE" && next.rollout) {
+          setResult(next);
+          setTime(next.rollout.timeline.start_time_s);
+        }
+      })
+      .catch(() => {
+        /* readiness is loaded on demand */
+      });
+  }, []);
+
   async function runFitFixture() {
     setBusy(true);
     setError(null);
@@ -86,13 +125,95 @@ export function PhysicsApp() {
           <button type="button" disabled={busy} onClick={() => void runFitFixture()}>
             {busy ? "GPU stage running..." : "Inspect P5 synthetic fit"}
           </button>
+          <button type="button" disabled={busy} onClick={() => void inspectRealFit()}>
+            {busy ? "Checking footage..." : "Inspect P5R real fit"}
+          </button>
         </section>
       </>
     );
   }
 
+  if ("footage" in result && !result.rollout) {
+    const requested = result.requested_clip;
+    return (
+      <section className="result">
+        {error ? <div className="banner bad">{error}</div> : null}
+        <div className="sourcebar">
+          <span className="name">P5R real-video inverse physics</span>
+          <span className="facts">{result.status}</span>
+          <button type="button" disabled={busy} onClick={() => void runFixture()}>
+            Run P4
+          </button>
+          <button type="button" disabled={busy} onClick={() => void runFitFixture()}>
+            Run P5 fit
+          </button>
+          <button type="button" disabled={busy} onClick={() => void inspectRealFit()}>
+            Recheck footage
+          </button>
+        </div>
+        <div className="verdict">
+          <strong>Waiting for a measured tether clip</strong>
+          <span>
+            Local videos were inspected. None have a tape-measured length in meters, so
+            scale stays unmarked and Newton is not run.
+          </span>
+        </div>
+        <div className="pane">
+          <h2>Requested clip</h2>
+          <dl className="kv">
+            <dt>duration</dt>
+            <dd>
+              {requested.duration_s.min}–{requested.duration_s.max} s
+            </dd>
+            <dt>subject</dt>
+            <dd>{requested.subject}</dd>
+            <dt>must show</dt>
+            <dd>{requested.must_show.join(", ")}</dd>
+            <dt>motion</dt>
+            <dd>{requested.motion}</dd>
+            <dt>measurement</dt>
+            <dd>{requested.measurement}</dd>
+            <dt>quality</dt>
+            <dd>{requested.quality}</dd>
+          </dl>
+          <p className="hint">
+            Do not guess an object diameter. Do not use cinematic footage as the
+            correctness baseline.
+          </p>
+        </div>
+        <div className="pane">
+          <h2>Local clips</h2>
+          <dl className="kv">
+            {result.footage.rejected.map((clip) => (
+              <div key={clip.id}>
+                <dt>{clip.id}</dt>
+                <dd>
+                  {clip.present ? "present" : "missing"} · {clip.reason}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+        {result.fit ? (
+          <div className="pane">
+            <h2>Last blocked report</h2>
+            <p className="hint">{result.fit.blockers.join(" ")}</p>
+          </div>
+        ) : null}
+      </section>
+    );
+  }
+
+  if (!("rollout" in result) || !result.rollout) {
+    return null;
+  }
+
   const rollout = result.rollout;
-  const fitResult = "fit" in result ? result : null;
+  const fitReport =
+    "fit" in result && result.fit && result.rollout ? result.fit : null;
+  const motionObservation =
+    "motion_observation" in result ? result.motion_observation ?? undefined : undefined;
+  const realFit = "footage" in result ? result : null;
   const constraint = rollout.constraints[0];
   const ranges = rollout.validation.body_position_range_m;
   const repeat = rollout.reproducibility.repeat_run;
@@ -111,16 +232,19 @@ export function PhysicsApp() {
         <button type="button" disabled={busy} onClick={() => void runFitFixture()}>
           Run P5 fit
         </button>
+        <button type="button" disabled={busy} onClick={() => void inspectRealFit()}>
+          Inspect P5R
+        </button>
       </div>
 
       <div className="pane media physics-pane">
-        <h2>{fitResult ? "Observed and fitted 3D motion" : "Simulated 3D rollout"}</h2>
+        <h2>{fitReport ? "Observed and fitted 3D motion" : "Simulated 3D rollout"}</h2>
         <PhysicsScene
           rollout={rollout}
           time={time}
-          motionObservation={fitResult?.motion_observation}
+          motionObservation={motionObservation}
         />
-        {fitResult ? (
+        {fitReport ? (
           <p className="hint">Blue: target samples. Orange: fitted Newton rollout.</p>
         ) : null}
       </div>
@@ -144,34 +268,48 @@ export function PhysicsApp() {
 
       <div className="verdict">
         <strong>
-          {fitResult
-            ? fitResult.fit.validation.passed
-              ? "P5 synthetic recovery passes"
-              : "P5 fit validation failed"
-            : rollout.validation.passed
-              ? "P4 invariants pass"
-              : "P4 validation failed"}
+          {realFit
+            ? realFit.fit?.status === "COMPLETE"
+              ? "P5R real fit complete"
+              : "P5R is blocked or awaiting footage"
+            : fitReport
+              ? fitReport.validation.passed
+                ? "P5 synthetic recovery passes"
+                : "P5 fit validation failed"
+              : rollout.validation.passed
+                ? "P4 invariants pass"
+                : "P4 validation failed"}
         </strong>
         <span>
-          {fitResult
+          {fitReport
             ? "The target is PhysicalMotionObservation. The orange path is the fitted SimulatedWorldState."
             : "The line endpoint, body transform, and trajectory come from SimulatedWorldState."}
         </span>
       </div>
-      {fitResult ? (
+      {fitReport ? (
         <div className="cards">
           <div className="card">
             <span className="label">fit RMSE</span>
-            <span className="value">{fmt(fitResult.fit.objective.rmse_m * 1000, 2)} mm</span>
+            <span className="value">
+              {fitReport.objective.rmse_m == null
+                ? "n/a"
+                : `${fmt(fitReport.objective.rmse_m * 1000, 2)} mm`}
+            </span>
             <span className="sub">
-              normalized {fmt(fitResult.fit.objective.normalized_rmse, 6)}
+              normalized{" "}
+              {fitReport.objective.normalized_rmse == null
+                ? "n/a"
+                : fmt(fitReport.objective.normalized_rmse, 6)}
             </span>
           </div>
-          {fitResult.fit.parameters.map((parameter) => (
+          {fitReport.parameters.map((parameter) => (
             <div className="card" key={parameter.id}>
               <span className="label">{parameter.id}</span>
-              <span className="value">{fmt(parameter.fitted, 4)}</span>
+              <span className="value">
+                {parameter.fitted == null ? "held / not fitted" : fmt(parameter.fitted, 4)}
+              </span>
               <span className="sub">
+                {parameter.held_fixed ? "fixed from calibration · " : "fitted · "}
                 truth {parameter.truth === null ? "not recorded" : fmt(parameter.truth, 4)}{" "}
                 {parameter.unit}
               </span>

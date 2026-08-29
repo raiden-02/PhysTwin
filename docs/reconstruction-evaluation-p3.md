@@ -97,8 +97,15 @@ extra rigid or similarity alignment.
 Direct metric errors are blocked when prediction scale is `relative`.
 `metric_assumed` values are reported but remain estimator assumptions.
 
-## Current blocker
+## Status
+
+```text
+evaluator              COMPLETE
+synthetic validation   COMPLETE
+EMDB measured run      OPTIONAL / UNAVAILABLE
+```
 
 No approved EMDB sequence or registered SMPL model exists in this workspace.
-P3 can verify the evaluator and alignment math, but it cannot claim a measured
-benchmark result until those files are supplied.
+The evaluator and alignment math are already checked by the synthetic fixture.
+EMDB is optional supporting evaluation. It is not a physics-development
+blocker. The EMDB adapter remains in the repo for later use.

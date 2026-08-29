@@ -732,7 +732,11 @@ def validate_physical_motion_observation(document: Any) -> Mapping[str, Any]:
         {"kind", "id", "sha256"},
         exact=True,
     )
-    if source.get("kind") not in {"synthetic_rollout", "scene_observation_human_root"}:
+    if source.get("kind") not in {
+        "synthetic_rollout",
+        "scene_observation_human_root",
+        "scene_observation_entity_root",
+    }:
         raise ContractError("PhysicalMotionObservation.source.kind: unsupported")
     if not isinstance(source.get("id"), str) or not source["id"]:
         raise ContractError("PhysicalMotionObservation.source.id: must be a string")
@@ -822,7 +826,10 @@ def validate_inverse_physics_fit(document: Any) -> Mapping[str, Any]:
     status = root["status"]
     if status not in {"COMPLETE", "BLOCKED_INPUT", "FAILED"}:
         raise ContractError("InversePhysicsFit.status: unsupported")
-    if root["profile"] != "tether_length_initial_tangent_velocity_v1":
+    if root["profile"] not in {
+        "tether_length_initial_tangent_velocity_v1",
+        "tether_initial_tangent_velocity_fixed_length_v1",
+    }:
         raise ContractError("InversePhysicsFit.profile: unsupported")
 
     source = _mapping(root["source"], "InversePhysicsFit.source")
@@ -904,10 +911,23 @@ def validate_inverse_physics_fit(document: Any) -> Mapping[str, Any]:
             f"parameters.{parameter_id}",
             {
                 "id", "unit", "lower_bound", "upper_bound",
-                "initial", "fitted", "truth",
+                "initial", "fitted", "truth", "held_fixed",
             },
             exact=True,
         )
+        if not isinstance(parameter.get("held_fixed"), bool):
+            raise ContractError(f"parameters.{parameter_id}.held_fixed: must be a boolean")
+        if (
+            root["profile"] == "tether_initial_tangent_velocity_fixed_length_v1"
+            and parameter_id == "rest_length_m"
+            and parameter["held_fixed"] is not True
+        ):
+            raise ContractError("fixed-length profile must hold rest_length_m fixed")
+        if (
+            root["profile"] == "tether_length_initial_tangent_velocity_v1"
+            and parameter["held_fixed"]
+        ):
+            raise ContractError("length-fitting profile cannot hold a parameter fixed")
         lower = _finite(parameter.get("lower_bound"), f"parameters.{parameter_id}.lower_bound")
         upper = _finite(parameter.get("upper_bound"), f"parameters.{parameter_id}.upper_bound")
         initial = _finite(parameter.get("initial"), f"parameters.{parameter_id}.initial")
@@ -1065,7 +1085,10 @@ def validate_inverse_fit_artifacts(
         raise ContractError("inverse fit motion body does not match fitted scene")
 
     scene_observation = report["source"]["scene_observation"]
-    if motion["source"]["kind"] == "scene_observation_human_root":
+    if motion["source"]["kind"] in {
+        "scene_observation_human_root",
+        "scene_observation_entity_root",
+    }:
         if scene_observation != {
             "id": motion["source"]["id"],
             "sha256": motion["source"]["sha256"],

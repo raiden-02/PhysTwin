@@ -6,8 +6,13 @@ Every objective evaluation runs Newton XPBD through Warp on CUDA.
 
 ## Fit profile
 
-The only supported profile is
-`tether_length_initial_tangent_velocity_v1`.
+Supported profiles:
+
+- `tether_length_initial_tangent_velocity_v1` fits rest length and two
+  tangent velocities. No parameter may be held fixed.
+- `tether_initial_tangent_velocity_fixed_length_v1` holds `rest_length_m`
+  when that length established metric scale. See
+  [physics-fitting-p5r.md](physics-fitting-p5r.md).
 
 It fits three values:
 

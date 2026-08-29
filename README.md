@@ -57,15 +57,16 @@ Official TRAM import, after you run TRAM yourself, is
 `vision\reconstruct_humans.py --tram-dir <tram>\results\<seq>`. See
 `scripts/setup-humans.ps1`.
 
-P3 can evaluate that observation against an approved EMDB sequence:
+P3 reconstruction evaluation is complete. The synthetic fixture checks
+camera/body alignment and metric behavior:
 
 ```powershell
 .\.venv\Scripts\python.exe vision\evaluate_reconstruction.py --fixture
 ```
 
-The fixture checks camera/body alignment and metric behavior. It is not
-benchmark evidence. A measured run needs user-supplied EMDB and SMPL files.
-EMDB data is restricted to approved non-commercial academic use. See
+That fixture is not EMDB evidence. An EMDB measured run is optional and
+unavailable here. The adapter stays in the repo. EMDB is not a physics
+blocker. See
 [docs/reconstruction-evaluation-p3.md](docs/reconstruction-evaluation-p3.md).
 
 P4 adds the first executable 3D `PhysicalScene`. It runs one sphere under
@@ -102,10 +103,22 @@ The synthetic fixture has known values and writes a
 **Inspect P5 synthetic fit** to compare blue target samples with the orange
 Newton rollout.
 
-Real P1/P2 fitting requires measured metric scale and alignment plus an
+Real P1/P2 human fitting still requires measured metric scale plus an
 observable 3D pelvis track. Current DA3/TRAM outputs do not meet that gate, so
-the result is `BLOCKED_INPUT`. No real fit values are reported. See
+the result is `BLOCKED_INPUT`. No real human-fit values are reported. See
 [docs/physics-fitting-p5.md](docs/physics-fitting-p5.md).
+
+P5R adds a generic `entities.v1` object track, SAM2+DA3 world-XYZ lift, and
+known-distance metric calibration so real inverse physics does not depend on
+`humans.v1`. Local clips do not yet include a tape-measured tether length, so
+P5R is implemented and awaiting footage. It will not invent scale.
+
+```powershell
+.\.venv\Scripts\python.exe vision\prepare_real_motion.py --inspect
+```
+
+In the UI, select **Inspect P5R real fit**. See
+[docs/physics-fitting-p5r.md](docs/physics-fitting-p5r.md).
 
 ![Recorded Mixkit tennis: observed vs simulated overlay](docs/demo/mixkit_overlay.gif)
 

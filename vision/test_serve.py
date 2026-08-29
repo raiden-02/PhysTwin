@@ -25,6 +25,7 @@ class ServeHelpersTest(unittest.TestCase):
         paths = {route.path for route in serve.app.routes}
         self.assertIn("/api/physics-fixture", paths)
         self.assertIn("/api/physics-fit-fixture", paths)
+        self.assertIn("/api/physics-real-fit", paths)
 
 
 if __name__ == "__main__":

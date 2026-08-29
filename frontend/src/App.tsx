@@ -233,7 +233,7 @@ export function App() {
           </ol>
         ) : (
           <ol className="stepper">
-            <li>PhysicalScene to Newton/Warp rollout</li>
+            <li>PhysicalScene to Newton/Warp, then P5R real-video fit when footage exists</li>
           </ol>
         )}
       </header>

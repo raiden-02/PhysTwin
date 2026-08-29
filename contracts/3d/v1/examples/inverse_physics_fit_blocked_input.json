@@ -33,7 +33,8 @@
       "upper_bound": 2.4,
       "initial": 1.78,
       "fitted": null,
-      "truth": null
+      "truth": null,
+      "held_fixed": false
     },
     {
       "id": "initial_tangent_velocity_u_m_s",
@@ -42,7 +43,8 @@
       "upper_bound": 0.6,
       "initial": -0.12,
       "fitted": null,
-      "truth": null
+      "truth": null,
+      "held_fixed": false
     },
     {
       "id": "initial_tangent_velocity_v_m_s",
@@ -51,7 +53,8 @@
       "upper_bound": 0.6,
       "initial": 0.14,
       "fitted": null,
-      "truth": null
+      "truth": null,
+      "held_fixed": false
     }
   ],
   "optimizer": {

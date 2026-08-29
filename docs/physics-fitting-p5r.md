@@ -15,7 +15,10 @@ recorded video
   → fitted PhysicalScene + SimulatedWorldState
 ```
 
-P5R is implemented. The first completed real Newton fit used IRIS
+P5R is implemented. The successful real Newton fit used IRIS
+`Falling_ball/big/01.mp4` and recovered gravity. See
+[docs/evaluation/iris-p5r-falling-ball.md](evaluation/iris-p5r-falling-ball.md).
+The first attempted real Newton fit used IRIS
 `Pendulum/pendulum_45/01.mp4`. Local recorded clips still have no
 tape-measured length. The pipeline will not invent meters.
 

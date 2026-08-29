@@ -1,0 +1,56 @@
+{
+  "dataset": "IRIS",
+  "evidence_kind": "external_dataset",
+  "relative_video": "Falling_ball/big/01.mp4",
+  "video_sha256": "e7aa7ec3d88ee9dafd7d5aeba806de0a713585547e1ee243ae7ac61421cb01ea",
+  "window": {
+    "start_s": 1.4,
+    "duration_s": 0.5,
+    "max_frames": 16
+  },
+  "ball_radius_m": 0.11,
+  "drop_height_m": 1.0,
+  "reconstruction_method": "sam2_mask_known_radius_sphere",
+  "da3_depth_used_for_ball": false,
+  "static_camera": {
+    "assumed": true,
+    "max_translation_m": 0.002981116752623276
+  },
+  "accepted_frames": 16,
+  "rejected_frames": 0,
+  "gravity_used_during_fit": false,
+  "gravity_truth_m_s2": 9.81,
+  "recovered_gravity_m_s2": 9.044456946092058,
+  "gravity_abs_error_m_s2": 0.7655430539079422,
+  "gravity_percent_error": 7.803700855330704,
+  "fitted_initial_velocity_y_m_s": 1.1727772063958772,
+  "rmse_m": 0.06322172437964696,
+  "normalized_rmse": 0.10601556032998335,
+  "trajectory_extent_m": 0.5963438214434129,
+  "initial_mse_m2": 0.004464052788873636,
+  "final_mse_m2": 0.003996986433536047,
+  "improvement_ratio": 1.1168546261300132,
+  "objective_evaluations": 134,
+  "wall_seconds": 26.158870399929583,
+  "gpu": "NVIDIA GeForce RTX 4080 SUPER",
+  "bound_hits": [],
+  "visual_verdict": "observed and Newton paths follow the same rise-then-fall",
+  "gate": {
+    "ideal": false,
+    "acceptable": true,
+    "bound_hit": false,
+    "accepted": true
+  },
+  "hashes": {
+    "fitted_scene_sha256": "edb9f8298f8e19456448b00fd094b04ef1bf443cb98d2368f14d9c77cc27f450",
+    "fitted_rollout_sha256": "08c746048dd1c3369515e33d9282e14640d25519248d26f32e38229a287eedc9",
+    "moon_scene_sha256": "24d060413dfb6e190fe8ed2569f375545ceef8cdef8708e8a1b227db081f584d",
+    "moon_rollout_sha256": "b1fc4a9473dffae40c8449d1f473418c8d766f0096b05db999ce6085180641a4"
+  },
+  "counterfactual": {
+    "parameter": "gravity_magnitude_m_s2",
+    "original_value": 9.044456946092058,
+    "counterfactual_value": 1.62,
+    "observed": false
+  }
+}

@@ -632,7 +632,8 @@ topology search, VLM hypotheses, or counterfactual controls.
 
 ## P5R status
 
-P5R is implemented. The first completed real Newton fit used IRIS
+P5R is implemented. The successful real Newton fit used IRIS
+`Falling_ball/big/01.mp4` and recovered gravity. The first completed real Newton fit used IRIS
 `Pendulum/pendulum_45/01.mp4` as an `external_dataset` source. Local recorded
 clips still have no tape-measured length, so inspect without IRIS stays
 `AWAITING_FOOTAGE`. With the IRIS clip on disk, inspect is `READY`.

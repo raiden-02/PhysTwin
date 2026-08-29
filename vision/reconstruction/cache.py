@@ -31,6 +31,10 @@ def cache_entry(root: Path, cache_key: str) -> Path:
     return root / "results" / "cache" / "reconstruction" / cache_key
 
 
+def humans_cache_entry(root: Path, cache_key: str) -> Path:
+    return root / "results" / "cache" / "humans" / cache_key
+
+
 def is_complete(entry: Path) -> bool:
     marker = entry / COMPLETE_NAME
     document = entry / DOCUMENT_NAME

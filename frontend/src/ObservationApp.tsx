@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  attachObservationHumans,
+  createHumanFixture,
   createObservationFromFile,
   createObservationFromSample,
   fetchObservationResult,
@@ -11,6 +13,7 @@ import {
 import { ObservationScene } from "./ObservationScene";
 import type { Sample } from "./types";
 import type { ObservationJob, ObservationProgress, ObservationResult } from "./observation";
+import { readHumans } from "./observation";
 
 function fmt(n: number, digits = 2): string {
   return n.toFixed(digits);
@@ -101,8 +104,44 @@ export function ObservationApp({ samples }: Props) {
     }
   }
 
+  async function onHumanFixture() {
+    setError(null);
+    setResult(null);
+    setProgress(null);
+    setBusy(true);
+    try {
+      const next = await createHumanFixture();
+      setJob(next);
+      const loaded = await fetchObservationResult(next.id);
+      setResult(loaded);
+      setJob(loaded.job);
+      setTime(0);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onAttachHumans() {
+    if (!job) return;
+    setError(null);
+    setBusy(true);
+    try {
+      setJob(await attachObservationHumans(job.id));
+      const loaded = await fetchObservationResult(job.id);
+      setResult(loaded);
+      setJob(loaded.job);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const running = job?.status === "running";
   const observation = result?.observation;
+  const humans = observation ? readHumans(observation) : null;
   const lastSample = observation?.timeline.samples[observation.timeline.samples.length - 1];
 
   return (
@@ -113,10 +152,14 @@ export function ObservationApp({ samples }: Props) {
         <section className="panel">
           <h2>3D reconstruction</h2>
           <p className="hint">
-            P1 recovers a camera path and one inspectable point cloud. Scale stays relative.
-            This does not fit physics.
+            P1 recovers a camera path and one inspectable point cloud. P2 adds a TRAM body in
+            the same first-camera world. This does not fit physics.
           </p>
           <div className="row">
+            <button type="button" disabled={busy} onClick={() => void onHumanFixture()}>
+              Inspect P2 human fixture
+              <span className="kind">synthetic</span>
+            </button>
             {samples.map((sample) => (
               <button key={sample.id} type="button" disabled={busy} onClick={() => void onSample(sample.id)}>
                 {sample.label}
@@ -206,7 +249,7 @@ export function ObservationApp({ samples }: Props) {
               />
             </div>
             <div className="pane media">
-              <h2>Recovered camera and geometry</h2>
+              <h2>{humans ? "Recovered camera, geometry, and body" : "Recovered camera and geometry"}</h2>
               <ObservationScene
                 observation={observation}
                 artifactUrl={observationArtifactUrl(result.job.id, "scene_geometry")}
@@ -241,10 +284,15 @@ export function ObservationApp({ samples }: Props) {
             <span className="coords">t={fmt(time, 2)} s</span>
           </div>
           <div className="verdict">
-            <strong>relative scale</strong>
+            <strong>
+              {observation.coordinates.scale.status === "relative"
+                ? "relative scale"
+                : observation.coordinates.scale.status.replace(/_/g, " ")}
+            </strong>
             <span>
-              Camera poses are in the first-camera graphics world. No metric calibration was
-              applied.
+              {humans
+                ? "Body joints are in the first-camera graphics world and follow the recording time."
+                : "Camera poses are in the first-camera graphics world. No metric calibration was applied."}
             </span>
           </div>
           <div className="cards">
@@ -269,12 +317,35 @@ export function ObservationApp({ samples }: Props) {
             </div>
             <div className="card">
               <span className="label">model</span>
-              <span className="value">DA3-BASE</span>
+              <span className="value">
+                {humans ? "TRAM" : "DA3-BASE"}
+              </span>
               <span className="sub">
-                {observation.provenance.producer?.license?.weights ?? "Apache-2.0"}
+                {humans
+                  ? "MIT adapter"
+                  : observation.provenance.producer?.license?.weights ?? "Apache-2.0"}
               </span>
             </div>
+            {humans ? (
+              <div className="card">
+                <span className="label">people</span>
+                <span className="value">{humans.people.length}</span>
+                <span className="sub">{humans.joint_layout}</span>
+              </div>
+            ) : null}
           </div>
+          {result && !humans ? (
+            <div className="pane">
+              <h2>World-space body</h2>
+              <p className="hint">
+                Attach official TRAM results if you have a `results/&lt;seq&gt;` folder. Live
+                TRAM is not installed in this venv.
+              </p>
+              <button type="button" disabled={busy} onClick={() => void onAttachHumans()}>
+                Attach TRAM humans
+              </button>
+            </div>
+          ) : null}
           <div className="pane">
             <h2>Run details</h2>
             <dl className="kv">

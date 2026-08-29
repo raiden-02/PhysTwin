@@ -160,3 +160,22 @@ export function observationVideoUrl(jobId: string): string {
 export function observationArtifactUrl(jobId: string, artifactId: string): string {
   return `/api/observations/${jobId}/artifacts/${artifactId}`;
 }
+
+export async function createHumanFixture(): Promise<ObservationJob> {
+  const response = await fetch("/api/human-fixtures", { method: "POST" });
+  if (!response.ok) throw new Error(await parseError(response));
+  return response.json();
+}
+
+export async function attachObservationHumans(
+  jobId: string,
+  tramDir?: string,
+): Promise<ObservationJob> {
+  const response = await fetch(`/api/observations/${jobId}/humans`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tram_dir: tramDir ?? null }),
+  });
+  if (!response.ok) throw new Error(await parseError(response));
+  return response.json();
+}

@@ -24,6 +24,13 @@ clip goes through pinned Apache-2.0 DA3-BASE, writes a cached
 `SceneObservation`, and shows the recovered camera plus a point cloud beside
 the recording. Scale stays relative. V1 fitting is unchanged.
 
+P2 maps TRAM body and camera output into the same first-camera graphics world.
+TRAM was chosen over GVHMR because the TRAM code is MIT. GVHMR is
+non-commercial research-only. Live TRAM still needs a separate install and
+SMPL weights. This repo converts official TRAM files or a committed fixture.
+In the UI, **Inspect P2 human fixture** shows a 3D stick figure synced to a
+projected skeleton video.
+
 The complete design is in [docs/architecture-3d.md](docs/architecture-3d.md).
 
 The preserved V1 baseline is
@@ -38,6 +45,28 @@ P1 reconstruction (needs the vision venv plus `scripts/setup-reconstruction.ps1`
 ```
 
 That writes a cached `SceneObservation` under `results/cache/reconstruction/`. In the UI, switch to **3D scene + camera**. The default **2D physics twin** path is unchanged.
+
+P2 human conversion (no live TRAM required for the fixture):
+
+```powershell
+.\.venv\Scripts\python.exe vision\reconstruct_humans.py --from-fixture
+.\.venv\Scripts\python.exe vision\reconstruct_humans.py --walk-fixture --write-video results\human_fixture.mp4
+```
+
+Official TRAM import, after you run TRAM yourself, is
+`vision\reconstruct_humans.py --tram-dir <tram>\results\<seq>`. See
+`scripts/setup-humans.ps1`.
+
+P3 can evaluate that observation against an approved EMDB sequence:
+
+```powershell
+.\.venv\Scripts\python.exe vision\evaluate_reconstruction.py --fixture
+```
+
+The fixture checks camera/body alignment and metric behavior. It is not
+benchmark evidence. A measured run needs user-supplied EMDB and SMPL files.
+EMDB data is restricted to approved non-commercial academic use. See
+[docs/reconstruction-evaluation-p3.md](docs/reconstruction-evaluation-p3.md).
 
 ![Recorded Mixkit tennis: observed vs simulated overlay](docs/demo/mixkit_overlay.gif)
 

@@ -221,7 +221,7 @@ export function App() {
           </ol>
         ) : (
           <ol className="stepper">
-            <li>Video to reconstructed camera and geometry</li>
+            <li>Video to reconstructed camera, geometry, and body</li>
           </ol>
         )}
       </header>

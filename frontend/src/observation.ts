@@ -111,3 +111,60 @@ export type ObservationProgress = {
   error?: string;
   cache_key?: string;
 };
+
+export const SMPL24_BONES: Array<[number, number]> = [
+  [0, 1],
+  [0, 2],
+  [0, 3],
+  [1, 4],
+  [4, 7],
+  [7, 10],
+  [2, 5],
+  [5, 8],
+  [8, 11],
+  [3, 6],
+  [6, 9],
+  [9, 12],
+  [12, 15],
+  [9, 13],
+  [13, 16],
+  [16, 18],
+  [18, 20],
+  [20, 22],
+  [9, 14],
+  [14, 17],
+  [17, 19],
+  [19, 21],
+  [21, 23],
+];
+
+export type HumanSample = {
+  sample_index: number;
+  root: [number, number, number];
+  joints: Array<[number, number, number]>;
+  visible?: boolean;
+};
+
+export type HumanPerson = {
+  id: string;
+  track_id?: number;
+  samples: HumanSample[];
+};
+
+export type HumansV1 = {
+  joint_layout: string;
+  coordinate_frame: string;
+  people: HumanPerson[];
+};
+
+export function readHumans(observation: SceneObservation): HumansV1 | null {
+  const raw = observation.extensions["phystwin.humans.v1"];
+  if (!raw || typeof raw !== "object") return null;
+  const humans = raw as HumansV1;
+  if (!Array.isArray(humans.people) || humans.people.length === 0) return null;
+  return humans;
+}
+
+export function humanSampleAt(person: HumanPerson, sampleIndex: number): HumanSample | null {
+  return person.samples.find((sample) => sample.sample_index === sampleIndex) ?? person.samples[0] ?? null;
+}

@@ -11,6 +11,7 @@ from .adapter import (
 from .contracts import (
     ContractError,
     load_contract,
+    require_motion_matches_scene_alignment,
     validate_inverse_fit_artifacts,
     validate_inverse_physics_fit,
     validate_physical_motion_observation,
@@ -19,6 +20,9 @@ from .contracts import (
     validate_scene_observation,
     validate_simulated_world_state,
 )
+from .calibration import validate_metric_calibration
+from .entities import ENTITIES_EXTENSION, validate_entities_v1
+from .footage import REQUESTED_CLIP, inspect_local_footage
 from .humans import HUMANS_EXTENSION, validate_humans_v1
 
 
@@ -36,7 +40,12 @@ __all__ = [
     "ContractError",
     "Da3ReconstructionAdapter",
     "EstimatorDescriptor",
+    "ENTITIES_EXTENSION",
     "HUMANS_EXTENSION",
+    "REQUESTED_CLIP",
+    "inspect_local_footage",
+    "validate_entities_v1",
+    "validate_metric_calibration",
     "MODEL_ID",
     "MODEL_REVISION",
     "PACKAGE_REVISION",
@@ -46,6 +55,7 @@ __all__ = [
     "VideoInput",
     "load_contract",
     "reconstruction_cache_key",
+    "require_motion_matches_scene_alignment",
     "validate_humans_v1",
     "validate_inverse_fit_artifacts",
     "validate_inverse_physics_fit",

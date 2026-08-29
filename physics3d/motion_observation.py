@@ -13,6 +13,12 @@ from vision.reconstruction.contracts import (
     validate_physical_scene,
     validate_scene_observation,
 )
+from vision.reconstruction.calibration import REJECTED_SOURCES
+from vision.reconstruction.entities import (
+    ENTITIES_EXTENSION,
+    find_entity,
+    validate_entities_v1,
+)
 from vision.reconstruction.humans import HUMANS_EXTENSION, validate_humans_v1
 from vision.reconstruction.transforms import transform_point
 
@@ -203,6 +209,124 @@ def scene_observation_blockers(
     return blockers
 
 
+def entity_observation_blockers(
+    observation: Mapping[str, Any],
+    template_scene: Mapping[str, Any],
+    *,
+    entity_id: str | None = None,
+) -> list[str]:
+    """Return every reason a P5R entity observation is ineligible for fitting."""
+
+    blockers: list[str] = []
+    try:
+        validate_scene_observation(observation)
+    except Exception as error:
+        return [f"invalid SceneObservation: {error}"]
+    try:
+        validate_physical_scene(template_scene)
+    except Exception as error:
+        return [f"invalid PhysicalScene template: {error}"]
+
+    scale = observation["coordinates"]["scale"]
+    if scale.get("status") != "metric_measured":
+        blockers.append(
+            "SceneObservation scale must be metric_measured; "
+            f"got {scale.get('status')}"
+        )
+    source = scale.get("source")
+    if source is None or str(source).strip().lower() in REJECTED_SOURCES:
+        blockers.append(
+            "metric_measured scale must come from a known-distance measurement, "
+            f"got source {source!r}"
+        )
+    meters = scale.get("meters_per_world_unit")
+    if not isinstance(meters, (int, float)) or isinstance(meters, bool) or not math.isfinite(float(meters)):
+        blockers.append("SceneObservation has no finite meters_per_world_unit")
+
+    alignment = template_scene["observation_alignment"]
+    observation_hash = hashlib.sha256(canonical_json_bytes(observation)).hexdigest()
+    if alignment.get("observation_sha256") != observation_hash:
+        blockers.append("PhysicalScene observation_sha256 does not match SceneObservation")
+    if alignment.get("scale_source") != "measured":
+        blockers.append("PhysicalScene scale_source must be measured")
+    if alignment.get("alignment_source") not in {"measured", "assumed"}:
+        blockers.append("PhysicalScene alignment_source must be measured or assumed")
+    if alignment.get("up_mode") not in {"level_camera", "supplied_vector"}:
+        blockers.append(
+            "PhysicalScene must declare up_mode level_camera or supplied_vector. "
+            "First-camera +Y is not measured gravity."
+        )
+    if alignment.get("up_source") not in {"assumed", "measured"}:
+        blockers.append("PhysicalScene must declare up_source assumed or measured")
+    if alignment.get("up_mode") == "level_camera" and alignment.get("up_source") == "measured":
+        blockers.append("level_camera cannot be claimed as measured gravity")
+    if (
+        alignment.get("alignment_source") == "measured"
+        and alignment.get("up_source") != "measured"
+    ):
+        blockers.append("measured alignment_source requires a measured physical-up vector")
+    if alignment.get("T_scene_observation_m") is None:
+        blockers.append("PhysicalScene has no T_scene_observation_m")
+    if isinstance(meters, (int, float)) and not isinstance(meters, bool):
+        scene_meters = alignment.get("meters_per_observation_unit")
+        if not isinstance(scene_meters, (int, float)) or not math.isclose(
+            float(scene_meters),
+            float(meters),
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            blockers.append("PhysicalScene and SceneObservation metric scales do not match")
+
+    entities_raw = observation.get("extensions", {}).get(ENTITIES_EXTENSION)
+    if entities_raw is None:
+        blockers.append("SceneObservation has no entities.v1 object track")
+        return blockers
+    try:
+        entities = validate_entities_v1(
+            entities_raw,
+            sample_count=len(observation["timeline"]["samples"]),
+        )
+    except Exception as error:
+        blockers.append(f"invalid entities.v1 evidence: {error}")
+        return blockers
+    try:
+        entity = find_entity(entities, entity_id)
+    except KeyError:
+        blockers.append(f"entities.v1 entity {entity_id!r} was not found")
+        return blockers
+    visible = sorted(
+        (sample for sample in entity["samples"] if sample.get("visible", True)),
+        key=lambda sample: int(sample["sample_index"]),
+    )
+    if len(visible) < 12:
+        blockers.append("P5R requires at least 12 visible entity-root samples")
+    timeline_by_index = {
+        int(sample["sample_index"]): sample for sample in observation["timeline"]["samples"]
+    }
+    times = [
+        float(timeline_by_index[int(sample["sample_index"])]["timestamp_s"])
+        for sample in visible
+        if int(sample["sample_index"]) in timeline_by_index
+    ]
+    if len(times) >= 2 and times[-1] - times[0] < 0.5:
+        blockers.append("P5R requires at least 0.5 seconds of visible motion")
+    if any(times[index] >= times[index + 1] for index in range(len(times) - 1)):
+        blockers.append("P5R entity timestamps must be strictly increasing")
+    scene_start = float(template_scene["execution"]["start_time_s"])
+    scene_end = scene_start + float(template_scene["execution"]["duration_s"])
+    if times and (
+        times[0] < scene_start - 1e-12
+        or times[-1] > scene_end + 1e-12
+    ):
+        blockers.append(
+            "P5R entity timestamps must lie inside the PhysicalScene timeline"
+        )
+    attachment = template_scene["model"]["constraints"][0]["body_attachment_m"]
+    if any(abs(float(value)) > 1e-12 for value in attachment):
+        blockers.append("entity-root fitting requires body_attachment_m at the body origin")
+    return blockers
+
+
 def motion_observation_from_scene_observation(
     observation: Mapping[str, Any],
     template_scene: Mapping[str, Any],
@@ -298,6 +422,101 @@ def motion_observation_from_scene_observation(
         "warnings": [
             "The P5 body is a passive rigid proxy for the reconstructed pelvis. "
             "Articulated control is outside P5."
+        ],
+    }
+    validate_physical_motion_observation(document)
+    return document
+
+
+def motion_observation_from_entities(
+    observation: Mapping[str, Any],
+    template_scene: Mapping[str, Any],
+    *,
+    entity_id: str | None = None,
+) -> dict[str, Any]:
+    """Convert an eligible entity root track into physical-scene meters."""
+
+    blockers = entity_observation_blockers(
+        observation,
+        template_scene,
+        entity_id=entity_id,
+    )
+    if blockers:
+        raise FitInputBlocked(blockers)
+
+    entities = validate_entities_v1(
+        observation["extensions"][ENTITIES_EXTENSION],
+        sample_count=len(observation["timeline"]["samples"]),
+    )
+    entity = find_entity(entities, entity_id)
+    timeline_by_index = {
+        int(sample["sample_index"]): sample for sample in observation["timeline"]["samples"]
+    }
+    scale = float(observation["coordinates"]["scale"]["meters_per_world_unit"])
+    transform = template_scene["observation_alignment"]["T_scene_observation_m"]
+    samples = []
+    for entity_sample in sorted(entity["samples"], key=lambda item: int(item["sample_index"])):
+        if not entity_sample.get("visible", True):
+            continue
+        sample_index = int(entity_sample["sample_index"])
+        timestamp = float(timeline_by_index[sample_index]["timestamp_s"])
+        scaled = [scale * float(value) for value in entity_sample["root"]]
+        position = transform_point(transform, scaled)
+        samples.append(
+            {
+                "sample_index": len(samples),
+                "timestamp_s": timestamp,
+                "position_m": list(position),
+                "weight": 1.0,
+            }
+        )
+    ranges = [
+        max(sample["position_m"][axis] for sample in samples)
+        - min(sample["position_m"][axis] for sample in samples)
+        for axis in range(3)
+    ]
+    if any(value < 0.02 for value in ranges):
+        raise FitInputBlocked(
+            [
+                "P5R requires at least 0.02 m observed variation on X, Y, and Z; "
+                f"got {ranges}"
+            ]
+        )
+
+    observation_hash = hashlib.sha256(canonical_json_bytes(observation)).hexdigest()
+    document = {
+        "schema": "phystwin.physical_motion_observation",
+        "version": 1,
+        "observation_id": f"{observation['observation_id']}-{entity['id']}-root-motion",
+        "source": {
+            "kind": "scene_observation_entity_root",
+            "id": observation["observation_id"],
+            "sha256": observation_hash,
+        },
+        "coordinates": {
+            "handedness": "right",
+            "up_axis": "+Y",
+            "transform_notation": "T_parent_child",
+            "vector_convention": "column",
+        },
+        "units": {"length": "meter", "time": "second"},
+        "track": {
+            "body_id": template_scene["model"]["bodies"][0]["id"],
+            "point": "body_origin",
+            "samples": samples,
+        },
+        "provenance": {
+            "synthetic": False,
+            "source_extension": ENTITIES_EXTENSION,
+            "entity_id": entity["id"],
+            "scale_status": "metric_measured",
+            "alignment_source": template_scene["observation_alignment"].get(
+                "alignment_source"
+            ),
+            "calibration": observation.get("provenance", {}).get("metric_calibration"),
+        },
+        "warnings": [
+            "The P5R body is a passive rigid proxy for the lifted object centroid."
         ],
     }
     validate_physical_motion_observation(document)

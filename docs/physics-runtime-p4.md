@@ -217,5 +217,5 @@ cross-GPU or cross-version determinism.
   inverse fitting, or counterfactual edits.
 - XPBD enforces distance numerically. The rollout records max and RMS error.
 - The GPU-memory value does not include allocations outside Warp's mempool.
-- P3's real EMDB benchmark remains blocked on approved EMDB data and
-  registered SMPL model files. No EMDB metric is claimed.
+- P3's EMDB measured benchmark is optional and unavailable here. The
+  evaluator itself is complete. No EMDB metric is claimed.

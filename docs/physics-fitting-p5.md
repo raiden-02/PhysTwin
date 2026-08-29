@@ -6,8 +6,13 @@ Every objective evaluation runs Newton XPBD through Warp on CUDA.
 
 ## Fit profile
 
-The only supported profile is
-`tether_length_initial_tangent_velocity_v1`.
+Supported profiles:
+
+- `tether_length_initial_tangent_velocity_v1` fits rest length and two
+  tangent velocities. No parameter may be held fixed.
+- `tether_initial_tangent_velocity_fixed_length_v1` holds `rest_length_m`
+  when that length established metric scale. See
+  [physics-fitting-p5r.md](physics-fitting-p5r.md).
 
 It fits three values:
 
@@ -177,8 +182,12 @@ This is different from an optimizer failure.
 
 `phystwin.inverse_physics_fit`, version 1, has three statuses:
 
-- `COMPLETE`: output scene and rollout exist, hashes are present, and validation
-  passed
+- `COMPLETE`: output scene and rollout exist, hashes are present, and the
+  Newton run executed (`execution_valid`). For synthetic fits,
+  `quality.status` is `synthetic_checked` and `validation.passed` is the
+  recovery check. For real fits, `quality.status` is `unassessed`. RMSE is
+  reported. `validation.passed` equals execution validity and is not a
+  residual-quality pass.
 - `BLOCKED_INPUT`: evidence gates failed, fitted values and objective metrics
   are null, and no output scene or rollout is claimed
 - `FAILED`: an attempted fit failed and the report contains failures

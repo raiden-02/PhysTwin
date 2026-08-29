@@ -142,9 +142,26 @@ class Da3ReconstructionAdapter:
             source_size=(width, height),
             processed_size=(processed_w, processed_h),
         )
+        sample_intrinsics = [
+            scale_intrinsics(
+                prediction.intrinsics[index],
+                source_size=(width, height),
+                processed_size=(processed_w, processed_h),
+            )
+            for index in range(len(frames))
+        ]
         vary = _intrinsics_vary(prediction.intrinsics)
         artifact_rel = Path("artifacts") / "scene.glb"
         artifact_path = work_dir / artifact_rel
+        depth_rel = Path("artifacts") / "da3_depth.npz"
+        depth_path = work_dir / depth_rel
+        _write_da3_depth_artifact(
+            depth_path,
+            prediction,
+            source_size=(width, height),
+            processed_size=(processed_w, processed_h),
+            source_frames=[frame.source_frame for frame in frames],
+        )
         points, colors = _canonical_point_cloud(
             prediction,
             t_obs_from_native,
@@ -207,7 +224,13 @@ class Da3ReconstructionAdapter:
                     "uri": artifact_rel.as_posix(),
                     "media_type": "model/gltf-binary",
                     "sha256": sha256_file(artifact_path),
-                }
+                },
+                {
+                    "id": "da3_depth",
+                    "uri": depth_rel.as_posix(),
+                    "media_type": "application/x-npz",
+                    "sha256": sha256_file(depth_path),
+                },
             ],
             "cameras": [
                 {
@@ -258,6 +281,8 @@ class Da3ReconstructionAdapter:
                     "native_extrinsics": "opencv_w2c",
                     "processed_image_size_px": [processed_w, processed_h],
                     "intrinsics_vary": vary,
+                    "sample_intrinsics": sample_intrinsics,
+                    "depth_artifact_id": "da3_depth",
                     "timestamp_source": frames[0].timestamp_source,
                     "lens_distortion": "unknown",
                     "selected_source_frames": [item.source_frame for item in frames],
@@ -310,6 +335,27 @@ def _run_da3(images: list[np.ndarray], options: Mapping[str, Any]):
         del model
         torch.cuda.empty_cache()
     return prediction, weights_sha256
+
+
+def _write_da3_depth_artifact(
+    path: Path,
+    prediction: Any,
+    *,
+    source_size: tuple[int, int],
+    processed_size: tuple[int, int],
+    source_frames: list[int],
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, Any] = {
+        "depth": np.asarray(prediction.depth, dtype=np.float32),
+        "processed_intrinsics": np.asarray(prediction.intrinsics, dtype=np.float64),
+        "processed_size": np.asarray(processed_size, dtype=np.int32),
+        "source_size": np.asarray(source_size, dtype=np.int32),
+        "source_frames": np.asarray(source_frames, dtype=np.int32),
+    }
+    if prediction.conf is not None:
+        payload["conf"] = np.asarray(prediction.conf, dtype=np.float32)
+    np.savez_compressed(path, **payload)
 
 
 def _intrinsics_vary(intrinsics: np.ndarray, rel_tol: float = 1e-3) -> bool:

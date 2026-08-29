@@ -100,17 +100,26 @@ The P4 output schema is `phystwin.simulated_world_state`, version 1. It stores:
 
 `PhysicalMotionObservation` is not a second `SceneObservation`. It is the small
 metric signal consumed by one inverse-physics objective. It can be generated
-from a synthetic rollout or adapted from an eligible `humans.v1` pelvis track.
+from a synthetic rollout, an eligible `humans.v1` pelvis track, or a P5R
+`entities.v1` object root.
 
-The real-evidence adapter requires `metric_measured` scale, matching source
-hashes, measured scale and alignment, enough visible motion, and meaningful
-variation on all three axes. Current P1/P2 outputs fail that gate. P5 records
-`BLOCKED_INPUT` instead of treating relative or assumed units as measurements.
+The human adapter still requires `metric_measured` scale and measured
+alignment. The entity adapter requires known-distance scale plus an explicit
+physical-up declaration (`level_camera` assumed, or a supplied vector).
+First-camera `+Y` is not treated as measured gravity. Guessed or estimator
+scales stay `BLOCKED_INPUT`.
 
-`InversePhysicsFit` records exactly three bounded parameters for
-`tether_length_initial_tangent_velocity_v1`. Status is `COMPLETE`,
-`BLOCKED_INPUT`, or `FAILED`. A complete report must reference the fitted
-`PhysicalScene` and final `SimulatedWorldState`.
+`InversePhysicsFit.validation` stores `execution_valid` and `quality`.
+`quality.status` is `unassessed` on real fits and `synthetic_checked` on
+synthetic recovery. Real `validation.passed` means the Newton run executed.
+It does not grade residual quality.
+
+`InversePhysicsFit` records the same three parameters. The length-fitting
+profile is `tether_length_initial_tangent_velocity_v1`. When tether length
+established scale, use
+`tether_initial_tangent_velocity_fixed_length_v1` and set
+`rest_length_m.held_fixed` to true. Status is `COMPLETE`, `BLOCKED_INPUT`, or
+`FAILED`.
 
 See [the P5 fitting document](../../../docs/physics-fitting-p5.md) for the
 objective, bounds, gate, optimizer, and failure behavior.

@@ -24,8 +24,13 @@ from physics3d.newton_runtime import (
     simulate_physical_scene,
     transform_point,
 )
+from vision.reconstruction.calibration import (
+    refuse_circular_length_fit,
+    select_real_fit_profile,
+)
 from vision.reconstruction.contracts import (
     canonical_json_bytes,
+    require_motion_matches_scene_alignment,
     validate_inverse_fit_artifacts,
     validate_inverse_physics_fit,
     validate_physical_motion_observation,
@@ -35,12 +40,42 @@ from vision.reconstruction.contracts import (
 
 
 PROFILE = "tether_length_initial_tangent_velocity_v1"
+FIXED_LENGTH_PROFILE = "tether_initial_tangent_velocity_fixed_length_v1"
 DEFAULT_SEED = 0x50545935
 DEFAULT_PARAMETERS = (
     ParameterSpec("rest_length_m", 1.6, 2.4, 1.78, "meter"),
     ParameterSpec("initial_tangent_velocity_u_m_s", -0.6, 0.6, -0.12, "meter_per_second"),
     ParameterSpec("initial_tangent_velocity_v_m_s", -0.6, 0.6, 0.14, "meter_per_second"),
 )
+SYNTHETIC_NORMALIZED_RMSE_LIMIT = 0.02
+REAL_SCENE_SOURCE_KINDS = {
+    "scene_observation_human_root",
+    "scene_observation_entity_root",
+}
+
+
+def parameter_specs_for_profile(
+    profile: str,
+    *,
+    rest_length_m: float | None = None,
+) -> tuple[ParameterSpec, ...]:
+    """Return the three P5 parameters, holding rest length only for the fixed-length profile."""
+
+    if profile == PROFILE:
+        return DEFAULT_PARAMETERS
+    if profile == FIXED_LENGTH_PROFILE:
+        rest = DEFAULT_PARAMETERS[0]
+        length = float(rest.initial if rest_length_m is None else rest_length_m)
+        lower = min(rest.lower_bound, length)
+        upper = max(rest.upper_bound, length)
+        if not lower < upper:
+            lower, upper = length - 0.05, length + 0.05
+        return (
+            ParameterSpec(rest.id, lower, upper, length, rest.unit, True),
+            DEFAULT_PARAMETERS[1],
+            DEFAULT_PARAMETERS[2],
+        )
+    raise ValueError(f"unsupported fit profile {profile!r}")
 
 
 def _normalize(vector: Sequence[float], path: str) -> tuple[float, float, float]:
@@ -155,6 +190,7 @@ def _parameter_rows(
             "initial": spec.initial,
             "fitted": None if fitted is None else float(fitted[index]),
             "truth": None if truth is None else float(truth[spec.id]),
+            "held_fixed": spec.held_fixed,
         }
         for index, spec in enumerate(specs)
     ]
@@ -164,9 +200,13 @@ def blocked_fit_report(
     template_scene: Mapping[str, Any],
     scene_observation: Mapping[str, Any],
     blockers: Sequence[str],
+    *,
+    profile: str = PROFILE,
+    parameters: Sequence[ParameterSpec] | None = None,
 ) -> dict[str, Any]:
     """Return a validated report without inventing metric observations."""
 
+    specs = tuple(parameters) if parameters is not None else parameter_specs_for_profile(profile)
     template_hash = hashlib.sha256(canonical_json_bytes(template_scene)).hexdigest()
     observation_hash = hashlib.sha256(canonical_json_bytes(scene_observation)).hexdigest()
     identity = hashlib.sha256(
@@ -174,7 +214,7 @@ def blocked_fit_report(
             {
                 "template": template_hash,
                 "scene_observation": observation_hash,
-                "profile": PROFILE,
+                "profile": profile,
             }
         )
     ).hexdigest()
@@ -194,7 +234,7 @@ def blocked_fit_report(
                 "sha256": observation_hash,
             },
         },
-        "profile": PROFILE,
+        "profile": profile,
         "objective": {
             "type": "weighted_position_mse_3d",
             "sample_count": 0,
@@ -206,7 +246,7 @@ def blocked_fit_report(
             "improvement_ratio": None,
         },
         "parameters": _parameter_rows(
-            DEFAULT_PARAMETERS,
+            specs,
             fitted=None,
             truth=None,
         ),
@@ -229,6 +269,12 @@ def blocked_fit_report(
         "validation": {
             "passed": False,
             "rollout_valid": False,
+            "execution_valid": False,
+            "quality": {
+                "status": "unassessed",
+                "rmse_m": None,
+                "normalized_rmse": None,
+            },
             "synthetic_recovery": {
                 "performed": False,
                 "within_tolerance": None,
@@ -253,11 +299,33 @@ def fit_tether_scene(
     generations: int = 4,
     coordinate_iterations: int = 12,
     repeat_check: bool = True,
+    profile: str = PROFILE,
+    parameters: Sequence[ParameterSpec] | None = None,
 ) -> dict[str, Any]:
-    """Fit the P5 profile and write a standard scene, rollout, and report."""
+    """Fit a supported tether profile and write a standard scene, rollout, and report."""
 
     template = dict(validate_physical_scene(template_scene))
     motion = dict(validate_physical_motion_observation(motion_observation))
+    require_motion_matches_scene_alignment(template, motion)
+    calibration = motion.get("provenance", {}).get("calibration")
+    refuse_circular_length_fit(
+        calibration if isinstance(calibration, Mapping) else None,
+        profile,
+    )
+    rest_length = float(template["model"]["constraints"][0]["rest_length_m"])
+    if (
+        isinstance(calibration, Mapping)
+        and calibration.get("circular_with_fit_parameter") == "rest_length_m"
+        and calibration.get("measured_length_m") is not None
+    ):
+        rest_length = float(calibration["measured_length_m"])
+        template["model"]["constraints"][0]["rest_length_m"] = rest_length
+        template = dict(validate_physical_scene(template))
+    specs = (
+        tuple(parameters)
+        if parameters is not None
+        else parameter_specs_for_profile(profile, rest_length_m=rest_length)
+    )
     if motion["track"]["body_id"] != template["model"]["bodies"][0]["id"]:
         raise ValueError("motion observation body_id does not match PhysicalScene")
     samples = motion["track"]["samples"]
@@ -279,7 +347,7 @@ def fit_tether_scene(
         nonlocal peak_gpu_memory
         candidate = apply_tether_parameters(
             template,
-            {spec.id: values[index] for index, spec in enumerate(DEFAULT_PARAMETERS)},
+            {spec.id: values[index] for index, spec in enumerate(specs)},
         )
         run = simulate_body_positions(candidate, timestamps)
         peak_gpu_memory = max(peak_gpu_memory, run.peak_gpu_memory_bytes)
@@ -289,7 +357,7 @@ def fit_tether_scene(
     started = time.perf_counter()
     search: SearchResult = bounded_differential_search(
         objective,
-        DEFAULT_PARAMETERS,
+        specs,
         seed=seed,
         population_size=population_size,
         generations=generations,
@@ -297,7 +365,7 @@ def fit_tether_scene(
     )
     fitted_values = {
         spec.id: search.values[index]
-        for index, spec in enumerate(DEFAULT_PARAMETERS)
+        for index, spec in enumerate(specs)
     }
     fitted_scene = apply_tether_parameters(template, fitted_values)
     fitted_run = simulate_body_positions(fitted_scene, timestamps)
@@ -321,33 +389,58 @@ def fit_tether_scene(
     truth = (
         {
             spec.id: float(truth_raw[spec.id])
-            for spec in DEFAULT_PARAMETERS
+            for spec in specs
         }
         if isinstance(truth_raw, Mapping)
-        and all(spec.id in truth_raw for spec in DEFAULT_PARAMETERS)
+        and all(spec.id in truth_raw for spec in specs)
         else None
     )
     normalized_errors = (
         [
             abs(fitted_values[spec.id] - truth[spec.id])
             / (spec.upper_bound - spec.lower_bound)
-            for spec in DEFAULT_PARAMETERS
+            for spec in specs
         ]
         if truth is not None
         else []
     )
     max_parameter_error = max(normalized_errors) if normalized_errors else None
     recovery_ok = max_parameter_error is not None and max_parameter_error <= 0.03
-    validation_passed = (
-        metrics["normalized_rmse"] <= 0.02
-        and (truth is None or recovery_ok)
-    )
-    if not validation_passed:
-        raise RuntimeError(
-            "P5 fit failed validation: "
-            f"normalized_rmse={metrics['normalized_rmse']:.6g}, "
-            f"max_normalized_parameter_error={max_parameter_error}"
+    warnings = [
+        "Mass is fixed because gravity-only ideal tether motion does not identify it.",
+        "Damping is not fitted because the P4 runtime has no validated damping parameter.",
+    ]
+    execution_valid = True
+    if is_synthetic_source:
+        quality = {
+            "status": "synthetic_checked",
+            "rmse_m": metrics["rmse_m"],
+            "normalized_rmse": metrics["normalized_rmse"],
+        }
+        validation_passed = (
+            metrics["normalized_rmse"] <= SYNTHETIC_NORMALIZED_RMSE_LIMIT
+            and (truth is None or recovery_ok)
         )
+        if not validation_passed:
+            raise RuntimeError(
+                "P5 fit failed validation: "
+                f"normalized_rmse={metrics['normalized_rmse']:.6g}, "
+                f"max_normalized_parameter_error={max_parameter_error}"
+            )
+    else:
+        quality = {
+            "status": "unassessed",
+            "rmse_m": metrics["rmse_m"],
+            "normalized_rmse": metrics["normalized_rmse"],
+        }
+        validation_passed = execution_valid
+        warnings.append(
+            "Real-fit quality is unassessed. RMSE is reported and is not a pass/fail."
+        )
+        if any(spec.held_fixed for spec in specs):
+            warnings.append(
+                "held_fixed parameters were not independently recovered by the optimizer."
+            )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     scene_bytes = _json_bytes(fitted_scene)
@@ -365,7 +458,7 @@ def fit_tether_scene(
             {
                 "template": template_hash,
                 "motion": motion_hash,
-                "profile": PROFILE,
+                "profile": profile,
                 "seed": seed,
                 "budget": [population_size, generations, coordinate_iterations],
             }
@@ -390,11 +483,11 @@ def fit_tether_scene(
                     "id": motion["source"]["id"],
                     "sha256": motion["source"]["sha256"],
                 }
-                if motion["source"]["kind"] == "scene_observation_human_root"
+                if motion["source"]["kind"] in REAL_SCENE_SOURCE_KINDS
                 else None
             ),
         },
-        "profile": PROFILE,
+        "profile": profile,
         "objective": {
             "type": "weighted_position_mse_3d",
             "sample_count": len(samples),
@@ -405,7 +498,7 @@ def fit_tether_scene(
             ),
         },
         "parameters": _parameter_rows(
-            DEFAULT_PARAMETERS,
+            specs,
             fitted=search.values,
             truth=truth,
         ),
@@ -432,8 +525,10 @@ def fit_tether_scene(
             "peak_gpu_memory_bytes": peak_gpu_memory,
         },
         "validation": {
-            "passed": True,
+            "passed": validation_passed,
             "rollout_valid": True,
+            "execution_valid": execution_valid,
+            "quality": quality,
             "synthetic_recovery": {
                 "performed": truth is not None,
                 "within_tolerance": recovery_ok if truth is not None else None,
@@ -441,10 +536,7 @@ def fit_tether_scene(
             },
         },
         "blockers": [],
-        "warnings": [
-            "Mass is fixed because gravity-only ideal tether motion does not identify it.",
-            "Damping is not fitted because the P4 runtime has no validated damping parameter.",
-        ],
+        "warnings": warnings,
         "failures": [],
     }
     validate_inverse_physics_fit(report)

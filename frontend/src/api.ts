@@ -11,7 +11,11 @@ import type {
   Result,
   Sample,
 } from "./types";
-import type { PhysicsFitFixtureResult, PhysicsFixtureResult } from "./physics";
+import type {
+  PhysicsFitFixtureResult,
+  PhysicsFixtureResult,
+  PhysicsRealFitResult,
+} from "./physics";
 
 async function parseError(response: Response): Promise<string> {
   try {
@@ -189,6 +193,18 @@ export async function runPhysicsFixture(): Promise<PhysicsFixtureResult> {
 
 export async function runPhysicsFitFixture(): Promise<PhysicsFitFixtureResult> {
   const response = await fetch("/api/physics-fit-fixture", { method: "POST" });
+  if (!response.ok) throw new Error(await parseError(response));
+  return response.json();
+}
+
+export async function fetchPhysicsRealFit(): Promise<PhysicsRealFitResult> {
+  const response = await fetch("/api/physics-real-fit");
+  if (!response.ok) throw new Error(await parseError(response));
+  return response.json();
+}
+
+export async function inspectPhysicsRealFit(): Promise<PhysicsRealFitResult> {
+  const response = await fetch("/api/physics-real-fit", { method: "POST" });
   if (!response.ok) throw new Error(await parseError(response));
   return response.json();
 }

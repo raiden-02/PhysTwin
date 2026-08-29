@@ -732,7 +732,11 @@ def validate_physical_motion_observation(document: Any) -> Mapping[str, Any]:
         {"kind", "id", "sha256"},
         exact=True,
     )
-    if source.get("kind") not in {"synthetic_rollout", "scene_observation_human_root"}:
+    if source.get("kind") not in {
+        "synthetic_rollout",
+        "scene_observation_human_root",
+        "scene_observation_entity_root",
+    }:
         raise ContractError("PhysicalMotionObservation.source.kind: unsupported")
     if not isinstance(source.get("id"), str) or not source["id"]:
         raise ContractError("PhysicalMotionObservation.source.id: must be a string")
@@ -822,7 +826,10 @@ def validate_inverse_physics_fit(document: Any) -> Mapping[str, Any]:
     status = root["status"]
     if status not in {"COMPLETE", "BLOCKED_INPUT", "FAILED"}:
         raise ContractError("InversePhysicsFit.status: unsupported")
-    if root["profile"] != "tether_length_initial_tangent_velocity_v1":
+    if root["profile"] not in {
+        "tether_length_initial_tangent_velocity_v1",
+        "tether_initial_tangent_velocity_fixed_length_v1",
+    }:
         raise ContractError("InversePhysicsFit.profile: unsupported")
 
     source = _mapping(root["source"], "InversePhysicsFit.source")
@@ -904,10 +911,23 @@ def validate_inverse_physics_fit(document: Any) -> Mapping[str, Any]:
             f"parameters.{parameter_id}",
             {
                 "id", "unit", "lower_bound", "upper_bound",
-                "initial", "fitted", "truth",
+                "initial", "fitted", "truth", "held_fixed",
             },
             exact=True,
         )
+        if not isinstance(parameter.get("held_fixed"), bool):
+            raise ContractError(f"parameters.{parameter_id}.held_fixed: must be a boolean")
+        if (
+            root["profile"] == "tether_initial_tangent_velocity_fixed_length_v1"
+            and parameter_id == "rest_length_m"
+            and parameter["held_fixed"] is not True
+        ):
+            raise ContractError("fixed-length profile must hold rest_length_m fixed")
+        if (
+            root["profile"] == "tether_length_initial_tangent_velocity_v1"
+            and parameter["held_fixed"]
+        ):
+            raise ContractError("length-fitting profile cannot hold a parameter fixed")
         lower = _finite(parameter.get("lower_bound"), f"parameters.{parameter_id}.lower_bound")
         upper = _finite(parameter.get("upper_bound"), f"parameters.{parameter_id}.upper_bound")
         initial = _finite(parameter.get("initial"), f"parameters.{parameter_id}.initial")
@@ -980,13 +1000,36 @@ def validate_inverse_physics_fit(document: Any) -> Mapping[str, Any]:
     _require_fields(
         validation,
         "InversePhysicsFit.validation",
-        {"passed", "rollout_valid", "synthetic_recovery"},
+        {"passed", "rollout_valid", "execution_valid", "quality", "synthetic_recovery"},
         exact=True,
     )
     if not isinstance(validation.get("passed"), bool):
         raise ContractError("InversePhysicsFit.validation.passed: must be a boolean")
     if not isinstance(validation.get("rollout_valid"), bool):
         raise ContractError("InversePhysicsFit.validation.rollout_valid: must be a boolean")
+    if not isinstance(validation.get("execution_valid"), bool):
+        raise ContractError("InversePhysicsFit.validation.execution_valid: must be a boolean")
+    quality = _mapping(validation.get("quality"), "validation.quality")
+    _require_fields(
+        quality,
+        "validation.quality",
+        {"status", "rmse_m", "normalized_rmse"},
+        exact=True,
+    )
+    if quality.get("status") not in {"unassessed", "synthetic_checked"}:
+        raise ContractError("validation.quality.status: unsupported")
+    if quality["status"] == "unassessed":
+        if quality.get("rmse_m") is not None:
+            _finite(quality.get("rmse_m"), "validation.quality.rmse_m")
+        if quality.get("normalized_rmse") is not None:
+            _finite(quality.get("normalized_rmse"), "validation.quality.normalized_rmse")
+        if validation["passed"] != validation["execution_valid"]:
+            raise ContractError("unassessed quality: passed must equal execution_valid")
+    else:
+        for field in ("rmse_m", "normalized_rmse"):
+            value = _finite(quality.get(field), f"validation.quality.{field}")
+            if value < 0.0:
+                raise ContractError(f"validation.quality.{field}: must be >= 0")
     recovery = _mapping(validation.get("synthetic_recovery"), "validation.synthetic_recovery")
     _require_fields(
         recovery,
@@ -1011,19 +1054,50 @@ def validate_inverse_physics_fit(document: Any) -> Mapping[str, Any]:
         or recovery.get("max_normalized_parameter_error") is not None
     ):
         raise ContractError("unperformed synthetic recovery metrics must be null")
+    if quality["status"] == "synthetic_checked" and recovery["performed"] is not True:
+        raise ContractError("synthetic_checked quality requires synthetic_recovery.performed")
+    if quality["status"] == "unassessed" and recovery["performed"] is True:
+        raise ContractError("unassessed quality cannot claim synthetic recovery")
 
     blockers = _sequence(root["blockers"], "InversePhysicsFit.blockers")
     warnings = _sequence(root["warnings"], "InversePhysicsFit.warnings")
     failures = _sequence(root["failures"], "InversePhysicsFit.failures")
     if status == "COMPLETE":
-        if blockers or failures or validation["passed"] is not True or validation["rollout_valid"] is not True:
-            raise ContractError("complete inverse fit must pass without blockers or failures")
+        if (
+            blockers
+            or failures
+            or validation["execution_valid"] is not True
+            or validation["rollout_valid"] is not True
+        ):
+            raise ContractError("complete inverse fit must execute without blockers or failures")
+        if quality["status"] == "synthetic_checked" and validation["passed"] is not True:
+            raise ContractError("complete synthetic recovery must set validation.passed")
     elif status == "BLOCKED_INPUT" and not blockers:
         raise ContractError("blocked inverse fit requires at least one blocker")
     elif status == "FAILED" and not failures:
         raise ContractError("failed inverse fit requires at least one failure")
     canonical_json_bytes(root)
     return root
+
+
+def require_motion_matches_scene_alignment(
+    physical_scene: Mapping[str, Any],
+    motion: Mapping[str, Any],
+) -> None:
+    """Real motion must come from the SceneObservation the PhysicalScene names."""
+
+    if motion.get("source", {}).get("kind") not in {
+        "scene_observation_human_root",
+        "scene_observation_entity_root",
+    }:
+        return
+    aligned = physical_scene.get("observation_alignment", {}).get("observation_sha256")
+    source_hash = motion.get("source", {}).get("sha256")
+    if aligned != source_hash:
+        raise ContractError(
+            "PhysicalScene observation_alignment.observation_sha256 must match "
+            "PhysicalMotionObservation.source.sha256"
+        )
 
 
 def validate_inverse_fit_artifacts(
@@ -1065,12 +1139,17 @@ def validate_inverse_fit_artifacts(
         raise ContractError("inverse fit motion body does not match fitted scene")
 
     scene_observation = report["source"]["scene_observation"]
-    if motion["source"]["kind"] == "scene_observation_human_root":
+    if motion["source"]["kind"] in {
+        "scene_observation_human_root",
+        "scene_observation_entity_root",
+    }:
         if scene_observation != {
             "id": motion["source"]["id"],
             "sha256": motion["source"]["sha256"],
         }:
             raise ContractError("inverse fit SceneObservation source does not match motion")
+        require_motion_matches_scene_alignment(template, motion)
+        require_motion_matches_scene_alignment(fitted_scene, motion)
     elif scene_observation is not None:
         raise ContractError("synthetic inverse fit must not claim a SceneObservation source")
 

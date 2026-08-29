@@ -15,6 +15,7 @@ class ParameterSpec:
     upper_bound: float
     initial: float
     unit: str
+    held_fixed: bool = False
 
 
 @dataclass(frozen=True)
@@ -72,9 +73,8 @@ def bounded_differential_search(
             raise ValueError("objective must return a finite value")
         return value
 
-    rng = np.random.default_rng(seed)
-    population = rng.random((population_size, dimension), dtype=np.float64)
-    population[0] = np.asarray(
+    held = np.asarray([item.held_fixed for item in parameters], dtype=bool)
+    initial_unit = np.asarray(
         [
             (item.initial - item.lower_bound)
             / (item.upper_bound - item.lower_bound)
@@ -82,6 +82,16 @@ def bounded_differential_search(
         ],
         dtype=np.float64,
     )
+
+    def pin_held(unit: np.ndarray) -> np.ndarray:
+        pinned = unit.copy()
+        pinned[held] = initial_unit[held]
+        return pinned
+
+    rng = np.random.default_rng(seed)
+    population = rng.random((population_size, dimension), dtype=np.float64)
+    population[0] = initial_unit
+    population = np.asarray([pin_held(candidate) for candidate in population])
     scores = np.asarray([evaluate(candidate) for candidate in population])
     initial_objective = float(scores[0])
 
@@ -97,7 +107,7 @@ def bounded_differential_search(
             )
             mask = rng.random(dimension) < crossover_rate
             mask[int(rng.integers(0, dimension))] = True
-            trial = np.where(mask, mutant, population[index])
+            trial = pin_held(np.where(mask, mutant, population[index]))
             score = evaluate(trial)
             if score < scores[index]:
                 population[index] = trial
@@ -108,10 +118,11 @@ def bounded_differential_search(
     best_score = float(scores[best_index])
     step = 0.1
     completed_coordinate_iterations = 0
+    free_axes = [axis for axis, item in enumerate(parameters) if not item.held_fixed]
     for _ in range(coordinate_iterations):
         completed_coordinate_iterations += 1
         improved = False
-        for axis in range(dimension):
+        for axis in free_axes:
             for direction in (-1.0, 1.0):
                 trial = best.copy()
                 trial[axis] = np.clip(trial[axis] + direction * step, 0.0, 1.0)

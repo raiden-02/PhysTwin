@@ -122,12 +122,12 @@ export type InversePhysicsFit = {
   profile: string;
   objective: {
     sample_count: number;
-    mse_m2: number;
-    rmse_m: number;
-    normalized_rmse: number;
-    trajectory_extent_m: number;
-    initial_mse_m2: number;
-    improvement_ratio: number;
+    mse_m2: number | null;
+    rmse_m: number | null;
+    normalized_rmse: number | null;
+    trajectory_extent_m: number | null;
+    initial_mse_m2: number | null;
+    improvement_ratio: number | null;
   };
   parameters: Array<{
     id: string;
@@ -135,8 +135,9 @@ export type InversePhysicsFit = {
     lower_bound: number;
     upper_bound: number;
     initial: number;
-    fitted: number;
+    fitted: number | null;
     truth: number | null;
+    held_fixed?: boolean;
   }>;
   optimizer: {
     seed: number;
@@ -149,6 +150,12 @@ export type InversePhysicsFit = {
   validation: {
     passed: boolean;
     rollout_valid: boolean;
+    execution_valid: boolean;
+    quality: {
+      status: "unassessed" | "synthetic_checked";
+      rmse_m: number | null;
+      normalized_rmse: number | null;
+    };
     synthetic_recovery: {
       performed: boolean;
       within_tolerance: boolean | null;
@@ -166,4 +173,41 @@ export type PhysicsFitFixtureResult = {
   physical_scene: PhysicalScene;
   rollout: SimulatedWorldState;
   stdout: string;
+};
+
+export type RequestedClip = {
+  duration_s: { min: number; max: number };
+  subject: string;
+  must_show: string[];
+  motion: string;
+  measurement: string;
+  quality: string;
+  do_not: string[];
+};
+
+export type FootageReview = {
+  id: string;
+  path: string;
+  present: boolean;
+  kind: string;
+  tethered: boolean;
+  known_length_m: number | null;
+  eligible: boolean;
+  reason: string;
+};
+
+export type PhysicsRealFitResult = {
+  status: "AWAITING_FOOTAGE" | "READY" | "BLOCKED_INPUT" | "COMPLETE";
+  footage: {
+    status: string;
+    eligible: FootageReview[];
+    rejected: FootageReview[];
+    requested_clip: RequestedClip;
+  };
+  requested_clip: RequestedClip;
+  fit?: InversePhysicsFit | null;
+  motion_observation?: PhysicalMotionObservation | null;
+  physical_scene?: PhysicalScene | null;
+  rollout?: SimulatedWorldState | null;
+  blockers?: string[];
 };

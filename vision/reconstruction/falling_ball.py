@@ -22,59 +22,105 @@ IDENTITY_TRANSFORM = [
 MIN_PLAUSIBLE_DEPTH_M = 0.30
 MAX_PLAUSIBLE_DEPTH_M = 8.00
 MAX_FRAME_DEPTH_JUMP_M = 0.40
-MAX_STATIC_CAMERA_TRANSLATION_M = 0.05
+MAX_STATIC_CAMERA_TRANSLATION_WORLD = 0.05
 
 
-def camera_translation_m(transform: Sequence[float]) -> list[float]:
+def camera_translation_world(transform: Sequence[float]) -> list[float]:
     return [float(transform[3]), float(transform[7]), float(transform[11])]
 
 
 def static_camera_report(camera: Mapping[str, Any]) -> dict[str, Any]:
-    """Measure first-to-last DA3 camera translation. Depth still comes from the sphere."""
+    """Measure first-to-last DA3 camera translation in reconstruction units.
+
+    SceneObservation scale from DA3 is relative. These numbers are not meters
+    unless a later metric conversion has been applied.
+    """
 
     poses = list(camera.get("poses") or [])
     if len(poses) < 2:
         return {
             "assumed_static": True,
             "pose_count": len(poses),
-            "max_translation_m": 0.0,
+            "max_translation_world": 0.0,
+            "units": "da3_reconstruction",
+            "scale": "relative",
             "accepted": True,
             "reason": "fewer than two poses; static camera is assumed",
         }
-    first = camera_translation_m(poses[0]["T_world_camera"])
+    first = camera_translation_world(poses[0]["T_world_camera"])
     max_delta = 0.0
     for pose in poses[1:]:
-        point = camera_translation_m(pose["T_world_camera"])
+        point = camera_translation_world(pose["T_world_camera"])
         delta = math.sqrt(sum((point[axis] - first[axis]) ** 2 for axis in range(3)))
         max_delta = max(max_delta, delta)
-    accepted = max_delta <= MAX_STATIC_CAMERA_TRANSLATION_M
+    accepted = max_delta <= MAX_STATIC_CAMERA_TRANSLATION_WORLD
     return {
         "assumed_static": True,
         "pose_count": len(poses),
-        "max_translation_m": max_delta,
+        "max_translation_world": max_delta,
+        "units": "da3_reconstruction",
+        "scale": "relative",
         "accepted": accepted,
         "reason": None if accepted else (
-            f"DA3 camera translation {max_delta:.4f} m exceeds "
-            f"{MAX_STATIC_CAMERA_TRANSLATION_M:.2f} m static-camera check"
+            f"DA3 camera translation {max_delta:.4f} reconstruction units exceeds "
+            f"{MAX_STATIC_CAMERA_TRANSLATION_WORLD:.2f} relative-scale static-camera check"
         ),
     }
+
+
+def summarize_intrinsics(samples: Sequence[Mapping[str, float]]) -> dict[str, Any]:
+    """Describe DA3 K variation. Used for provenance, not for gravity fitting."""
+
+    if not samples:
+        return {"count": 0}
+    keys = ("fx_px", "fy_px", "cx_px", "cy_px", "skew_px")
+    report: dict[str, Any] = {"count": len(samples), "policy": "per_frame"}
+    for key in keys:
+        values = [float(item.get(key, 0.0)) for item in samples]
+        lo = min(values)
+        hi = max(values)
+        mid = 0.5 * (lo + hi)
+        report[key] = {
+            "min": lo,
+            "max": hi,
+            "span": hi - lo,
+            "relative_span": 0.0 if abs(mid) < 1e-12 else (hi - lo) / abs(mid),
+        }
+    return report
+
+
+def _intrinsics_for_frame(
+    frame: Mapping[str, Any],
+    shared: Mapping[str, float] | None,
+) -> Mapping[str, float]:
+    own = frame.get("intrinsics")
+    if isinstance(own, Mapping) and "fx_px" in own:
+        return own
+    if shared is not None:
+        return shared
+    raise ValueError("each reconstruction sample needs its own or a shared camera K")
 
 
 def lift_and_filter_frames(
     frames: Sequence[Mapping[str, Any]],
     *,
     radius_m: float,
-    intrinsics: Mapping[str, float],
+    intrinsics: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
-    """Reconstruct each mask, then reject implausible depths and scale jumps."""
+    """Reconstruct each mask, then reject implausible depths and scale jumps.
+
+    Prefer a per-frame `intrinsics` field on each sample. A shared K is only
+    for tests or cameras that truly publish one matrix.
+    """
 
     records = []
     accepted_depths: list[float] = []
     for frame in frames:
+        k = _intrinsics_for_frame(frame, intrinsics)
         lifted = reconstruct_metric_ball(
             frame["mask"],
             radius_m=radius_m,
-            intrinsics=intrinsics,
+            intrinsics=k,
         )
         record = {
             "sample_index": int(frame["sample_index"]),
@@ -88,6 +134,13 @@ def lift_and_filter_frames(
             "radius_px": lifted.get("radius_px"),
             "depth_m": lifted.get("depth_m"),
             "position_m": lifted.get("position_m"),
+            "intrinsics": {
+                "fx_px": float(k["fx_px"]),
+                "fy_px": float(k["fy_px"]),
+                "cx_px": float(k["cx_px"]),
+                "cy_px": float(k["cy_px"]),
+                "skew_px": float(k.get("skew_px", 0.0)),
+            },
             "accepted": bool(lifted.get("accepted")),
             "reason": lifted.get("reason"),
         }

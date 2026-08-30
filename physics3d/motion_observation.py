@@ -253,7 +253,7 @@ def entity_observation_blockers(
     *,
     entity_id: str | None = None,
 ) -> list[str]:
-    """Return every reason a P5R entity observation is ineligible for fitting."""
+    """Return every reason an entity observation is ineligible for fitting."""
 
     blockers: list[str] = []
     try:
@@ -337,7 +337,7 @@ def entity_observation_blockers(
         key=lambda sample: int(sample["sample_index"]),
     )
     if len(visible) < 12:
-        blockers.append("P5R requires at least 12 visible entity-root samples")
+        blockers.append("entity track requires at least 12 visible entity-root samples")
     timeline_by_index = {
         int(sample["sample_index"]): sample for sample in observation["timeline"]["samples"]
     }
@@ -347,9 +347,9 @@ def entity_observation_blockers(
         if int(sample["sample_index"]) in timeline_by_index
     ]
     if len(times) >= 2 and times[-1] - times[0] < 0.5:
-        blockers.append("P5R requires at least 0.5 seconds of visible motion")
+        blockers.append("entity track requires at least 0.5 seconds of visible motion")
     if any(times[index] >= times[index + 1] for index in range(len(times) - 1)):
-        blockers.append("P5R entity timestamps must be strictly increasing")
+        blockers.append("entity timestamps must be strictly increasing")
     scene_start = float(template_scene["execution"]["start_time_s"])
     scene_end = scene_start + float(template_scene["execution"]["duration_s"])
     if times and (
@@ -357,7 +357,7 @@ def entity_observation_blockers(
         or times[-1] > scene_end + 1e-12
     ):
         blockers.append(
-            "P5R entity timestamps must lie inside the PhysicalScene timeline"
+            "entity timestamps must lie inside the PhysicalScene timeline"
         )
     attachment = template_scene["model"]["constraints"][0]["body_attachment_m"]
     if any(abs(float(value)) > 1e-12 for value in attachment):
@@ -508,7 +508,7 @@ def motion_observation_from_entities(
                 "weight": 1.0,
             }
         )
-    require_nontrivial_spatial_motion(samples, label="P5R")
+    require_nontrivial_spatial_motion(samples, label="entity")
 
     observation_hash = hashlib.sha256(canonical_json_bytes(observation)).hexdigest()
     document = {
@@ -545,7 +545,7 @@ def motion_observation_from_entities(
             "dataset": observation.get("provenance", {}).get("dataset"),
         },
         "warnings": [
-            "The P5R body is a passive rigid proxy for the lifted object centroid."
+            "The body is a passive rigid proxy for the lifted object centroid."
         ],
     }
     validate_physical_motion_observation(document)

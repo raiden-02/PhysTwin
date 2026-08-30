@@ -195,7 +195,10 @@ export function App() {
   return (
     <div className="page">
       <header className="top">
-        <h1>PhysTwin</h1>
+        <div>
+          <h1>PhysTwin diagnostics</h1>
+          <p className="lede"><a href="#/">Back to demo</a></p>
+        </div>
         <div className="mode-choice" role="tablist" aria-label="Product mode">
           <button
             type="button"
@@ -233,7 +236,7 @@ export function App() {
           </ol>
         ) : (
           <ol className="stepper">
-            <li>PhysicalScene to Newton/Warp, then P5R real-video fit when footage exists</li>
+            <li>Synthetic fixtures and saved real-fit overlays.</li>
           </ol>
         )}
       </header>

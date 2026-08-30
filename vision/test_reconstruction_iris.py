@@ -1,4 +1,4 @@
-"""CPU tests for IRIS metadata and the first P5R benchmark clip."""
+"""CPU tests for IRIS metadata and the first real pendulum clip."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ class IrisMetadataTest(unittest.TestCase):
 
     def test_committed_run_record_is_not_length_recovery(self) -> None:
         record = json.loads(
-            (ROOT / "docs" / "evaluation" / "iris-p5r-pendulum-45-01.json").read_text(
+            (ROOT / "docs" / "evaluation" / "iris-pendulum-45-01.json").read_text(
                 encoding="utf-8"
             )
         )
@@ -74,7 +74,7 @@ class IrisMetadataTest(unittest.TestCase):
         self.assertEqual(record["provenance"]["held_fixed_parameter"], "rest_length_m")
         self.assertFalse(record["independent_rope_length_recovery"])
         self.assertEqual(record["quality_status"], "unassessed")
-        self.assertFalse(record["proceed_to_p7"])
+        self.assertNotIn("proceed_to_p7", record)
         self.assertFalse(record["overlay"]["same_qualitative_motion"])
 
     def test_on_disk_iris_parameters_match_the_clip_config(self) -> None:

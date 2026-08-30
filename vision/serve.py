@@ -37,7 +37,7 @@ from serve_physics import register_physics_routes  # noqa: E402
 JOBS_ROOT = ROOT / "results" / "jobs"
 DIST = ROOT / "frontend" / "dist"
 HOST = "127.0.0.1"
-PORT = 8765
+PORT = int(os.environ.get("PHYSTWIN_PORT", "8765"))
 
 SAMPLE_SPECS = [
     {
@@ -336,6 +336,22 @@ register_physics_routes(
     jobs_root=JOBS_ROOT,
     run_lock=_run_lock,
 )
+
+
+@app.get("/api/demo/falling-ball")
+def demo_falling_ball() -> dict:
+    path = ROOT / "docs" / "evaluation" / "iris-falling-ball-demo.json"
+    if not path.is_file():
+        raise HTTPException(404, "falling-ball demo payload is missing")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@app.get("/api/demo/falling-ball/video")
+def demo_falling_ball_video() -> FileResponse:
+    path = ROOT / "datasets" / "IRIS" / "Falling_ball" / "big" / "01.mp4"
+    if not path.is_file():
+        raise HTTPException(404, "IRIS falling-ball video is not on disk")
+    return FileResponse(path, media_type="video/mp4")
 
 
 @app.get("/api/health")

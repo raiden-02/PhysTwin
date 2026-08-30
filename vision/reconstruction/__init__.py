@@ -22,7 +22,7 @@ from .contracts import (
 )
 from .calibration import validate_metric_calibration
 from .entities import ENTITIES_EXTENSION, validate_entities_v1
-from .footage import REQUESTED_CLIP, inspect_local_footage
+from .footage import inspect_local_footage
 from .humans import HUMANS_EXTENSION, validate_humans_v1
 
 
@@ -42,7 +42,6 @@ __all__ = [
     "EstimatorDescriptor",
     "ENTITIES_EXTENSION",
     "HUMANS_EXTENSION",
-    "REQUESTED_CLIP",
     "inspect_local_footage",
     "validate_entities_v1",
     "validate_metric_calibration",

@@ -16,5 +16,5 @@
   "up_source": "assumed",
   "static_camera": true,
   "target_xy": [1920.0, 920.0],
-  "seed_notes": "Pixels on the 3840x2160 frame near t=1.50 s, mid-air soccer ball. Window 1.40-1.90 s is before the first bounce. IRIS gravity is evaluation ground truth only and must not enter the fitter."
+  "seed_notes": "Pixels on the 3840x2160 frame near t=1.50 s, mid-air soccer ball. Window 1.40-1.90 s is before the first bounce. Clip config stores no gravity field."
 }

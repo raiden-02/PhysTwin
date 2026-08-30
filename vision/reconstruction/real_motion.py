@@ -115,7 +115,7 @@ def validate_physical_up(physical_up: Mapping[str, Any] | None) -> dict[str, Any
 
     if physical_up is None:
         raise ContractError(
-            "P5R requires an explicit physical_up. Do not silently treat first-camera +Y "
+            "Real-motion prepare requires an explicit physical_up. Do not silently treat first-camera +Y "
             "as measured gravity. Use mode=level_camera with source=assumed, or supply a "
             "measured/assumed up vector."
         )

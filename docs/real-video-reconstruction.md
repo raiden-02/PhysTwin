@@ -1,7 +1,26 @@
-# P5R real-video inverse physics
+# Real-video reconstruction
 
-P5R connects a recorded clip to the existing P5 Newton fitter. It does not add
-a second physics implementation.
+This path lifts a recorded clip into a metric `PhysicalMotionObservation` and
+fits it with the existing Newton inverse-physics profiles. It does not add a
+second physics implementation.
+
+Two lift methods exist.
+
+**Known-radius sphere** (falling ball):
+
+```text
+recorded video
+  → SAM2 mask
+  → image center and horizontal silhouette radius
+  → per-frame DA3 camera K
+  → pinhole projected-sphere depth
+  → PhysicalMotionObservation
+  → free_fall_gravity_v1
+```
+
+See [evaluation/iris-falling-ball.md](evaluation/iris-falling-ball.md).
+
+**Known-distance pair** (tether / pendulum):
 
 ```text
 recorded video
@@ -11,26 +30,22 @@ recorded video
   → entities.v1 object, anchor, or attachment tracks
   → known-distance metric calibration
   → PhysicalMotionObservation
-  → P5 Newton/Warp fitter
-  → fitted PhysicalScene + SimulatedWorldState
+  → tether fit with rest length held if it set the scale
 ```
 
-P5R is implemented. The first completed real Newton fit used IRIS
-`Pendulum/pendulum_45/01.mp4`. Local recorded clips still have no
-tape-measured length. The pipeline will not invent meters.
+See [evaluation/iris-pendulum-45-01.md](evaluation/iris-pendulum-45-01.md).
 
-IRIS `rope_length` `0.50 m` set metric scale and held `rest_length_m` fixed.
-That run is real-video physics fitting, not independent rope-length recovery.
-See [evaluation/iris-p5r-pendulum-45-01.md](evaluation/iris-p5r-pendulum-45-01.md).
+The pipeline does not invent meters. Local recorded clips without a tape
+measurement stay ineligible.
 
-## What is new
+## Entity tracks
 
 `phystwin.entities.v1` stores generic object and anchor tracks on
 `SceneObservation`. Real inverse physics does not require `humans.v1`.
 
-Lift uses:
+The DA3-depth lift uses:
 
-- DA3 depth from `artifacts/da3_depth.npz`
+- depth from `artifacts/da3_depth.npz`
 - the camera pose for that sample
 - that sample's intrinsics when DA3 says K varies. Sample-0 K is not used as
   a silent fallback
@@ -41,6 +56,11 @@ Lift uses:
 
 The object root is that robust 3D center. It is not median-depth at the mean
 mask pixel.
+
+The falling-ball path does not use DA3 depth. It uses the measured radius and
+per-frame K.
+
+## Metric calibration
 
 `phystwin.metric_calibration` records one known scene distance. The only
 accepted method is `known_scene_distance`. Sources such as `guessed`,
@@ -68,28 +88,14 @@ Physical up is required and must be declared:
 `scale_source` stays `measured` after known-distance calibration.
 `alignment_source` equals the physical-up source.
 
-For a real SceneObservation-derived motion, 
+For a real SceneObservation-derived motion,
 `PhysicalScene.observation_alignment.observation_sha256` must equal
 `PhysicalMotionObservation.source.sha256`. Cross-wiring another observation
 is rejected.
 
 A complete Newton run is `execution_valid`. Real-fit `quality.status` is
 `unassessed`. RMSE and normalized RMSE are stored as numbers. They are not a
-pass/fail. `validation.passed` equals `execution_valid` on real fits. Do not
-read that as "physics fit passed". Synthetic fits still use
-`quality.status = synthetic_checked` and the existing 0.02 / 0.03 checks.
-
-## Local footage
-
-`vision/prepare_real_motion.py --inspect` classifies on-disk clips.
-
-Local recorded clips still fail the metric gate. The Mixkit bounce, generated
-clips, and cinematic swing are not tether validation. The local pendulum has
-no tape-measured length in meters. Image-space radius is not a metric
-measurement. Without IRIS those clips alone stay `AWAITING_FOOTAGE`.
-
-IRIS `pendulum_45/01` is eligible when `datasets/IRIS/` is present. Then
-inspect is `READY`. That is an `external_dataset` source, not `recorded_real`.
+pass or fail. `validation.passed` equals `execution_valid` on real fits.
 
 ## Commands
 
@@ -99,7 +105,7 @@ Inspect clips, no GPU:
 .\.venv\Scripts\python.exe vision\prepare_real_motion.py --inspect
 ```
 
-After a measured clip exists:
+After a measured tether clip exists:
 
 ```powershell
 .\.venv\Scripts\python.exe vision\prepare_real_motion.py `
@@ -123,7 +129,7 @@ After a measured clip exists:
 `assumed`. To record a measured up, pass `--physical-up X Y Z` and
 `--up-source measured`.
 
-Then run the existing P5 fitter in the physics environment:
+Then run the fitter in the physics environment:
 
 ```powershell
 .\.venv-physics\Scripts\python.exe -m physics3d.fit_physical_scene `
@@ -135,63 +141,24 @@ Then run the existing P5 fitter in the physics environment:
 `--profile` can be omitted. The fitter chooses the fixed-length profile when
 the motion provenance says tether length set the scale.
 
-## UI
-
-**3D physics → Inspect P5R real fit** shows the requested clip, local
-inspection, and any saved complete overlay. It does not fabricate a rollout
-when footage is missing.
-
-## Requested clip
-
-- 3 to 8 seconds
-- ball or weight on a string or rope
-- visible anchor and object
-- nontrivial spatial motion. Planar pendulums are allowed
-- known tether length in meters
-- limited blur and occlusion
-
-Do not guess an object diameter. Do not treat cinematic footage as the
-correctness baseline.
-
-## IRIS first real source
-
-The first real P5R clip is IRIS `Pendulum/pendulum_45/01.mp4` from
-`rasulkhanbayov/IRIS`. Evidence kind is `external_dataset`, not
-`recorded_real`.
-
-Download stays under `datasets/IRIS/` and is gitignored.
+Falling-ball prepare and fit:
 
 ```powershell
-.\.venv\Scripts\python.exe vision\prepare_real_motion.py --iris --output results\physics3d\p5r-real-fit
+.\.venv\Scripts\python.exe vision\prepare_falling_ball.py
 .\.venv-physics\Scripts\python.exe -m physics3d.fit_physical_scene `
-  results\physics3d\p5r-real-fit\aligned_physical_scene_template.json `
-  --motion-observation results\physics3d\p5r-real-fit\target_motion_observation.json `
-  --output results\physics3d\p5r-real-fit
+  results\physics3d\p5r-falling-ball\aligned_physical_scene_template.json `
+  --motion-observation results\physics3d\p5r-falling-ball\target_motion_observation.json `
+  --profile free_fall_gravity_v1 `
+  --output results\physics3d\p5r-falling-ball
 ```
 
-`parameters.json` `pendulum.pendulum_45.rope_length` is `0.50 m`. That value
-sets metric scale and holds `rest_length_m` fixed. PhysTwin does not claim an
-independent rope-length recovery.
+IRIS media stays under `datasets/IRIS/` and is gitignored.
 
-The first run on this machine is recorded in
-[evaluation/iris-p5r-pendulum-45-01.md](evaluation/iris-p5r-pendulum-45-01.md).
-Status `COMPLETE` and `execution_valid` mean Newton ran. Final RMSE is
-`0.616 m`. Quality stays `unassessed`. The overlay does not follow the
-observed path. Do not treat that residual as a pass.
+IRIS `pendulum.pendulum_45.rope_length` is `0.50 m`. That value sets metric
+scale and holds `rest_length_m` fixed. PhysTwin does not claim an independent
+rope-length recovery from that clip.
 
-Seed pixels for that clip are in
-`contracts/3d/v1/examples/p5r_iris_pendulum_45_01.json`. Prepare starts at
-`t=2.0 s` so the hand is no longer on the ball.
-
-Physical up for this run is `level_camera` / `assumed`.
-
-Observation-aligned rollouts keep the P4 fixture 1e-5 / 3-axis checks
+Observation-aligned rollouts keep the standalone fixture 1e-5 / 3-axis checks
 off. They still record the real XPBD tether residual and AABB travel.
-A planar swing is allowed. A P4 standalone fixture still has to meet
+A planar swing is allowed. A standalone tether fixture still has to meet
 the original 1e-5 and 3-axis invariants.
-
-## P3 note
-
-The reconstruction evaluator is complete. Synthetic validation is complete.
-EMDB remains optional and unavailable here. It is not a P5R blocker. The EMDB
-adapter stays in the repo.

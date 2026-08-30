@@ -32,7 +32,7 @@ def track_selected_frames(
     from sam2.build_sam import build_sam2_video_predictor
 
     if not torch.cuda.is_available():
-        raise RuntimeError("P5R SAM2 tracking requires CUDA")
+        raise RuntimeError("SAM2 tracking requires CUDA")
     frames = sample_video_frames(video, list(source_frames))
     checkpoint_path = checkpoint or DEFAULT_CHECKPOINT
     with tempfile.TemporaryDirectory(prefix="phystwin_p5r_frames_") as tmp:

@@ -45,26 +45,28 @@ def main() -> int:
         motion_observation_from_sphere_track,
         stamp_free_fall_template,
         static_camera_report,
+        summarize_intrinsics,
     )
     from vision.reconstruction.iris_falling import (
+        assert_no_iris_gravity_truth,
         calibration_provenance,
-        load_iris_falling_ball_benchmark,
+        load_iris_falling_ball_input,
     )
     from vision.reconstruction.lift import sample_intrinsics_for_frame
     from vision.prepare_real_motion import _load_or_reconstruct
     from vision.reconstruction.track_entities import track_selected_frames
 
-    benchmark = load_iris_falling_ball_benchmark(ROOT)
-    video = benchmark["video"]
+    clip = load_iris_falling_ball_input(ROOT)
+    video = clip["video"]
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     template = dict(load_contract(args.template.resolve()))
     observation, _cache_dir = _load_or_reconstruct(
         video,
         source_id="iris-falling-ball-big-01",
-        start_s=benchmark["start_s"],
-        duration_s=benchmark["duration_s"],
-        max_frames=benchmark["max_frames"],
+        start_s=clip["start_s"],
+        duration_s=clip["duration_s"],
+        max_frames=clip["max_frames"],
         force=args.force,
     )
     camera = observation["cameras"][0]
@@ -78,7 +80,7 @@ def main() -> int:
     tracked = track_selected_frames(
         video,
         source_frames,
-        target=(benchmark["target_xy"][0], benchmark["target_xy"][1]),
+        target=(clip["target_xy"][0], clip["target_xy"][1]),
         anchor=None,
     )
     frame_inputs = []
@@ -93,18 +95,19 @@ def main() -> int:
                 "source_frame": source_frames[local_index],
                 "timestamp_s": timestamps[local_index],
                 "mask": mask,
+                "intrinsics": sample_intrinsics_for_frame(camera, local_index, da3),
             }
         )
-    intrinsics = sample_intrinsics_for_frame(camera, 0, da3)
+    per_frame_k = [item["intrinsics"] for item in frame_inputs]
     lifted = lift_and_filter_frames(
         frame_inputs,
-        radius_m=benchmark["ball_radius_m"],
-        intrinsics=intrinsics,
+        radius_m=clip["ball_radius_m"],
     )
     reconstruction = {
         "method": "sam2_mask_known_radius_sphere",
-        "ball_radius_m": benchmark["ball_radius_m"],
-        "intrinsics": intrinsics,
+        "ball_radius_m": clip["ball_radius_m"],
+        "intrinsics_policy": "per_frame_da3",
+        "intrinsics_variation": summarize_intrinsics(per_frame_k),
         "static_camera": camera_check,
         "accepted_frames": len(lifted["accepted"]),
         "rejected_frames": len(lifted["rejected"]),
@@ -142,30 +145,30 @@ def main() -> int:
         source_id="iris-falling-ball-big-01",
         source_sha256=reconstruction_hash,
         provenance={
-            **calibration_provenance(benchmark),
+            **calibration_provenance(clip),
             "physical_up": {
-                "mode": benchmark["up_mode"],
-                "source": benchmark["up_source"],
+                "mode": clip["up_mode"],
+                "source": clip["up_source"],
             },
         },
     )
     aligned = stamp_free_fall_template(
         template,
         motion,
-        radius_m=benchmark["ball_radius_m"],
+        radius_m=clip["ball_radius_m"],
     )
     _write_json(output / "target_motion_observation.json", motion)
     _write_json(output / "aligned_physical_scene_template.json", aligned)
     evidence = {
-        "evidence_kind": benchmark["evidence_kind"],
-        "dataset": benchmark["dataset"],
-        "repo_id": benchmark["repo_id"],
-        "source_url": benchmark["source_url"],
-        "relative_video": benchmark["relative_video"],
+        "evidence_kind": clip["evidence_kind"],
+        "dataset": clip["dataset"],
+        "repo_id": clip["repo_id"],
+        "source_url": clip["source_url"],
+        "relative_video": clip["relative_video"],
         "video_path": str(video),
         "video_sha256": sha256_file(video),
-        "ball_radius_m": benchmark["ball_radius_m"],
-        "drop_height_m": benchmark["drop_height_m"],
+        "ball_radius_m": clip["ball_radius_m"],
+        "drop_height_m": clip["drop_height_m"],
         "reconstruction_method": "sam2_mask_known_radius_sphere",
         "gravity_used_during_fit": False,
         "static_camera": camera_check,
@@ -182,7 +185,12 @@ def main() -> int:
         "aligned_template_sha256": hashlib.sha256(
             canonical_json_bytes(aligned)
         ).hexdigest(),
+        "intrinsics_policy": "per_frame_da3",
+        "intrinsics_variation": reconstruction["intrinsics_variation"],
     }
+    assert_no_iris_gravity_truth(motion)
+    assert_no_iris_gravity_truth(aligned)
+    assert_no_iris_gravity_truth(evidence)
     _write_json(output / "iris_p5r_falling_ball_evidence.json", evidence)
     print(
         json.dumps(

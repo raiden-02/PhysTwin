@@ -115,7 +115,7 @@ def validate_metric_calibration(document: Any) -> Mapping[str, Any]:
         )
     if endpoint_set not in TETHER_ENDPOINT_SETS:
         raise ContractError(
-            "unsupported calibration endpoints. First P5R case is anchor to "
+            "unsupported calibration endpoints. First real tether case is anchor to "
             "body_center or an explicit attachment point"
         )
     source = root["measurement_source"]

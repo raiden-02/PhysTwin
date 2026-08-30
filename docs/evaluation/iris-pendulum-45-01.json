@@ -8,7 +8,6 @@
   "execution_valid": true,
   "independent_rope_length_recovery": false,
   "verdict": "execution_valid_quality_unassessed_residual_poor",
-  "proceed_to_p7": false,
   "provenance": {
     "evidence_kind": "external_dataset",
     "dataset": "IRIS",
@@ -105,12 +104,12 @@
   },
   "warnings": [
     "Mass is fixed because gravity-only ideal tether motion does not identify it.",
-    "Damping is not fitted because the P4 runtime has no validated damping parameter.",
+    "Damping is not fitted because the validated runtime has no damping parameter.",
     "Real-fit quality is unassessed. RMSE is reported and is not a pass/fail.",
     "held_fixed parameters were not independently recovered by the optimizer.",
     "Newton XPBD enforces the distance joint numerically. See validation.tether_error_m.",
-    "XPBD tether residual exceeds the P4 fixture 1e-5 check. The residual is reported. This is not a hidden pass.",
-    "The P5R body is a passive rigid proxy for the lifted object centroid."
+    "XPBD tether residual exceeds the standalone fixture 1e-5 check. The residual is reported. This is not a hidden pass.",
+    "The body is a passive rigid proxy for the lifted object centroid."
   ],
   "overlay": {
     "same_qualitative_motion": false,

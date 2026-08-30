@@ -1,0 +1,63 @@
+{
+  "dataset": "IRIS",
+  "evidence_kind": "external_dataset",
+  "relative_video": "Falling_ball/big/01.mp4",
+  "video_sha256": "e7aa7ec3d88ee9dafd7d5aeba806de0a713585547e1ee243ae7ac61421cb01ea",
+  "window": {
+    "start_s": 1.4,
+    "duration_s": 0.5,
+    "max_frames": 16
+  },
+  "ball_radius_m": 0.11,
+  "drop_height_m": 1.0,
+  "reconstruction_method": "sam2_mask_known_radius_sphere",
+  "da3_depth_used_for_ball": false,
+  "intrinsics_policy": "per_frame_da3",
+  "intrinsics_variation": {
+    "fx_px_relative_span": 0.005129695699807414,
+    "fy_px_relative_span": 0.0044820135648942095
+  },
+  "static_camera": {
+    "assumed": true,
+    "max_translation_world": 0.002981116752623276,
+    "units": "da3_reconstruction",
+    "scale": "relative"
+  },
+  "accepted_frames": 16,
+  "rejected_frames": 0,
+  "gravity_used_during_fit": false,
+  "gravity_truth_m_s2": 9.81,
+  "recovered_gravity_m_s2": 9.911964029573904,
+  "gravity_abs_error_m_s2": 0.10196402957390305,
+  "gravity_percent_error": 1.0393886806717945,
+  "fitted_initial_velocity_y_m_s": 1.3408459513997686,
+  "rmse_m": 0.06414520637325191,
+  "normalized_rmse": 0.10743084684729298,
+  "trajectory_extent_m": 0.5970836892352788,
+  "initial_mse_m2": 0.004531931953275643,
+  "final_mse_m2": 0.004114607500667078,
+  "improvement_ratio": 1.101425094019516,
+  "objective_evaluations": 88,
+  "wall_seconds": 18.57133849989623,
+  "gpu": "NVIDIA GeForce RTX 4080 SUPER",
+  "bound_hits": [],
+  "visual_verdict": "observed and Newton paths follow the same rise-then-fall",
+  "gate": {
+    "ideal": false,
+    "acceptable": true,
+    "bound_hit": false,
+    "accepted": true
+  },
+  "hashes": {
+    "fitted_scene_sha256": "ecc26452a0baff48e4ccd4b87c06a92f8cf3da6d2ae89021d7417819fe67f019",
+    "fitted_rollout_sha256": "3283d5ee9a04a394509556c1464baa785eaa8d8895fa3110ad6b2059f87537b9",
+    "moon_scene_sha256": "7365ba5cbec9f736fe91c2f3b84cd6079307c586fb3226a6329c6c2f1f119028",
+    "moon_rollout_sha256": "9501df37bb65eed75ad34e762b2f6c7ceb137a2c42eaf25795d8c817b419cf6a"
+  },
+  "counterfactual": {
+    "parameter": "gravity_magnitude_m_s2",
+    "original_value": 9.911964029573904,
+    "counterfactual_value": 1.62,
+    "observed": false
+  }
+}

@@ -18,11 +18,6 @@ from vision.reconstruction.contracts import (
 
 
 MOON_GRAVITY_M_S2 = 1.62
-PRESETS = {
-    "moon": MOON_GRAVITY_M_S2,
-    "fitted": None,
-    "double": None,
-}
 
 
 def clone_scene_with_gravity(
@@ -109,13 +104,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fitted-scene", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--moon", action="store_true", default=True)
+    parser.add_argument(
+        "--gravity",
+        type=float,
+        default=MOON_GRAVITY_M_S2,
+        help="Counterfactual gravity magnitude in m/s². Default is Moon gravity 1.62.",
+    )
+    parser.add_argument("--label", default="moon")
     args = parser.parse_args()
     scene = json.loads(args.fitted_scene.read_text(encoding="utf-8"))
     result = rollout_counterfactual(
         scene,
-        gravity_magnitude_m_s2=MOON_GRAVITY_M_S2,
-        label="moon",
+        gravity_magnitude_m_s2=float(args.gravity),
+        label=str(args.label),
         output_dir=args.output.resolve(),
         repeat_check=False,
     )

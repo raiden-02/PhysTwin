@@ -476,7 +476,7 @@ def fit_tether_scene(
     recovery_ok = max_parameter_error is not None and max_parameter_error <= 0.03
     warnings = [
         "Mass is fixed because gravity-only ideal tether motion does not identify it.",
-        "Damping is not fitted because the P4 runtime has no validated damping parameter.",
+        "Damping is not fitted because the validated runtime has no damping parameter.",
     ]
     execution_valid = True
     if is_synthetic_source:

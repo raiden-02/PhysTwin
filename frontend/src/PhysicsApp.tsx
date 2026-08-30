@@ -1,18 +1,9 @@
 import { useEffect, useState } from "react";
-import {
-  fetchPhysicsRealFit,
-  inspectPhysicsRealFit,
-  runPhysicsFitFixture,
-  runPhysicsFixture,
-} from "./api";
+import { runPhysicsFitFixture, runPhysicsFixture } from "./api";
 import { PhysicsScene } from "./PhysicsScene";
-import type {
-  PhysicsFitFixtureResult,
-  PhysicsFixtureResult,
-  PhysicsRealFitResult,
-} from "./physics";
+import type { PhysicsFitFixtureResult, PhysicsFixtureResult } from "./physics";
 
-type View = PhysicsFixtureResult | PhysicsFitFixtureResult | PhysicsRealFitResult;
+type View = PhysicsFixtureResult | PhysicsFitFixtureResult;
 
 function fmt(value: number, digits = 3): string {
   return value.toFixed(digits);
@@ -29,10 +20,9 @@ export function PhysicsApp() {
   const [error, setError] = useState<string | null>(null);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [showFootage, setShowFootage] = useState(false);
 
   useEffect(() => {
-    if (!playing || !result || !("rollout" in result) || !result.rollout) return;
+    if (!playing || !result || !result.rollout) return;
     let frame = 0;
     let previous = performance.now();
     const startTime = result.rollout.timeline.start_time_s;
@@ -65,42 +55,6 @@ export function PhysicsApp() {
     }
   }
 
-  async function inspectRealFit() {
-    setBusy(true);
-    setError(null);
-    try {
-      const next = await inspectPhysicsRealFit();
-      setResult(next);
-      setShowFootage(true);
-      if (next.rollout) {
-        setTime(next.rollout.timeline.start_time_s);
-      }
-      setPlaying(false);
-    } catch (problem) {
-      setError(problem instanceof Error ? problem.message : String(problem));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!showFootage) return;
-    document.getElementById("p5r-footage")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [showFootage, result]);
-
-  useEffect(() => {
-    void fetchPhysicsRealFit()
-      .then((next) => {
-        if (next.fit?.status === "COMPLETE" && next.rollout) {
-          setResult(next);
-          setTime(next.rollout.timeline.start_time_s);
-        }
-      })
-      .catch(() => {
-        /* readiness is loaded on demand */
-      });
-  }, []);
-
   async function runFitFixture() {
     setBusy(true);
     setError(null);
@@ -127,51 +81,20 @@ export function PhysicsApp() {
             saved rollout and does not integrate physics.
           </p>
           <button className="primary" type="button" disabled={busy} onClick={() => void runFixture()}>
-            {busy ? "Running Newton/Warp..." : "Inspect P4 physics fixture"}
+            {busy ? "Running Newton/Warp..." : "Run tether fixture"}
           </button>
           <button type="button" disabled={busy} onClick={() => void runFitFixture()}>
-            {busy ? "GPU stage running..." : "Inspect P5 synthetic fit"}
-          </button>
-          <button type="button" disabled={busy} onClick={() => void inspectRealFit()}>
-            {busy ? "Checking footage..." : "Inspect P5R real fit"}
+            {busy ? "GPU stage running..." : "Run synthetic fit"}
           </button>
         </section>
       </>
     );
   }
 
-  if ("footage" in result && !result.rollout) {
-    return (
-      <section className="result">
-        {error ? <div className="banner bad">{error}</div> : null}
-        <div className="sourcebar">
-          <span className="name">P5R real-video inverse physics</span>
-          <span className="facts">{result.status}</span>
-          <button type="button" disabled={busy} onClick={() => void runFixture()}>
-            Run P4
-          </button>
-          <button type="button" disabled={busy} onClick={() => void runFitFixture()}>
-            Run P5 fit
-          </button>
-          <button type="button" disabled={busy} onClick={() => void inspectRealFit()}>
-            {busy ? "Checking footage..." : "Recheck footage"}
-          </button>
-        </div>
-        <FootageReview result={result} />
-      </section>
-    );
-  }
-
-  if (!("rollout" in result) || !result.rollout) {
-    return null;
-  }
-
   const rollout = result.rollout;
-  const fitReport =
-    "fit" in result && result.fit && result.rollout ? result.fit : null;
+  const fitReport = "fit" in result ? result.fit : null;
   const motionObservation =
-    "motion_observation" in result ? result.motion_observation ?? undefined : undefined;
-  const realFit = "footage" in result ? result : null;
+    "motion_observation" in result ? result.motion_observation : undefined;
   const constraint = rollout.constraints[0];
   const ranges = rollout.validation.body_position_range_m;
   const repeat = rollout.reproducibility.repeat_run;
@@ -185,16 +108,12 @@ export function PhysicsApp() {
           {rollout.simulator.device_name}
         </span>
         <button type="button" disabled={busy} onClick={() => void runFixture()}>
-          Run P4
+          Run tether
         </button>
         <button type="button" disabled={busy} onClick={() => void runFitFixture()}>
-          Run P5 fit
-        </button>
-        <button type="button" disabled={busy} onClick={() => void inspectRealFit()}>
-          {busy ? "Checking footage..." : "Inspect P5R"}
+          Run synthetic fit
         </button>
       </div>
-      {showFootage && realFit ? <FootageReview result={realFit} /> : null}
 
       <div className="pane media physics-pane">
         <h2>{fitReport ? "Observed and fitted 3D motion" : "Simulated 3D rollout"}</h2>
@@ -227,27 +146,19 @@ export function PhysicsApp() {
 
       <div className="verdict">
         <strong>
-          {realFit
-            ? realFit.fit?.status === "COMPLETE"
-              ? `Newton execution ${
-                  realFit.fit.validation.execution_valid ? "valid" : "invalid"
-                } · quality ${realFit.fit.validation.quality.status}`
-              : "P5R is blocked or awaiting footage"
-            : fitReport
-              ? fitReport.validation.quality.status === "synthetic_checked" &&
-                fitReport.validation.passed
-                ? "P5 synthetic recovery passes"
-                : "P5 fit validation failed"
-              : rollout.validation.passed
-                ? "P4 invariants pass"
-                : "P4 validation failed"}
+          {fitReport
+            ? fitReport.validation.quality.status === "synthetic_checked" &&
+              fitReport.validation.passed
+              ? "Synthetic recovery passes"
+              : "Synthetic fit validation failed"
+            : rollout.validation.passed
+              ? "Tether fixture invariants pass"
+              : "Tether fixture validation failed"}
         </strong>
         <span>
-          {realFit
-            ? "RMSE is reported. It is not a physics-quality pass. validation.passed means the Newton run executed, not that the residual is good."
-            : fitReport
-              ? "The target is PhysicalMotionObservation. The orange path is the fitted SimulatedWorldState."
-              : "The line endpoint, body transform, and trajectory come from SimulatedWorldState."}
+          {fitReport
+            ? "The target is PhysicalMotionObservation. The orange path is the fitted SimulatedWorldState."
+            : "The line endpoint, body transform, and trajectory come from SimulatedWorldState."}
         </span>
       </div>
       {fitReport ? (
@@ -335,78 +246,5 @@ export function PhysicsApp() {
         </dl>
       </div>
     </section>
-  );
-}
-
-function FootageReview({ result }: { result: PhysicsRealFitResult }) {
-  const eligible = result.footage.eligible;
-  const rejected = result.footage.rejected;
-  const requested = result.requested_clip;
-  const ready = eligible.length > 0;
-  return (
-    <div id="p5r-footage">
-      <div className="verdict">
-        <strong>
-          {ready
-            ? result.rollout
-              ? "IRIS clip is eligible. Showing the saved Newton overlay."
-              : "IRIS clip is eligible. No saved overlay is loaded."
-            : "Waiting for a measured tether clip"}
-        </strong>
-        <span>
-          {ready
-            ? eligible.map((clip) => `${clip.id}: ${clip.reason}`).join(" ")
-            : "Local recorded clips have no tape-measured length. IRIS is the first allowed external_dataset source."}
-        </span>
-      </div>
-      <div className="pane">
-        <h2>Eligible clips</h2>
-        <dl className="kv">
-          {eligible.length === 0 ? (
-            <div>
-              <dt>none</dt>
-              <dd>No eligible clip is on disk.</dd>
-            </div>
-          ) : (
-            eligible.map((clip) => (
-              <div key={clip.id}>
-                <dt>{clip.id}</dt>
-                <dd>
-                  {clip.kind} · {clip.known_length_m} m · {clip.reason}
-                </dd>
-              </div>
-            ))
-          )}
-        </dl>
-      </div>
-      <div className="pane">
-        <h2>Requested clip</h2>
-        <dl className="kv">
-          <dt>duration</dt>
-          <dd>
-            {requested.duration_s.min}–{requested.duration_s.max} s
-          </dd>
-          <dt>subject</dt>
-          <dd>{requested.subject}</dd>
-          <dt>motion</dt>
-          <dd>{requested.motion}</dd>
-          <dt>measurement</dt>
-          <dd>{requested.measurement}</dd>
-        </dl>
-      </div>
-      <div className="pane">
-        <h2>Other local clips</h2>
-        <dl className="kv">
-          {rejected.map((clip) => (
-            <div key={clip.id}>
-              <dt>{clip.id}</dt>
-              <dd>
-                {clip.present ? "present" : "missing"} · {clip.reason}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    </div>
   );
 }

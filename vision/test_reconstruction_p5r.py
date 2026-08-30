@@ -1,4 +1,4 @@
-"""P5R CPU tests: lift, calibration, circular claims, and hash continuity."""
+"""CPU tests: lift, calibration, circular claims, and hash continuity."""
 
 from __future__ import annotations
 

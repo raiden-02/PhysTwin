@@ -152,12 +152,12 @@ export function ObservationApp({ samples }: Props) {
         <section className="panel">
           <h2>3D reconstruction</h2>
           <p className="hint">
-            P1 recovers a camera path and one inspectable point cloud. P2 adds a TRAM body in
-            the same first-camera world. This does not fit physics.
+            This recovers a camera path and one inspectable point cloud. A TRAM body can be
+            added in the same first-camera world. This does not fit physics.
           </p>
           <div className="row">
             <button type="button" disabled={busy} onClick={() => void onHumanFixture()}>
-              Inspect P2 human fixture
+              Inspect human fixture
               <span className="kind">synthetic</span>
             </button>
             {samples.map((sample) => (
